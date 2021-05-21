@@ -1,0 +1,181 @@
+---
+title: "Chapter 1: Exploratory Data Analysis"
+output:
+  html_notebook:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    syntax: highlight
+---
+
+## Introduction
+
+John Tukey is often regarded as one of the founding drivers for modern data science, incorporating statistical inference along with basic summary statistics to visualize and understand data.
+
+```{r setup, warning=FALSE, message=FALSE}
+# Load libraries
+suppressPackageStartupMessages(library(tidyverse))
+library(curl)
+library(ggtext)
+library(scales)
+library(patchwork)
+library(kableExtra)
+library(matrixStats)
+
+# Set ggplot2 theme
+my_theme <- theme(
+  panel.grid = element_blank(), 
+  panel.background = element_rect(fill = "white", color = "black"),
+  
+  # Set axis and title themes
+  plot.title = element_markdown()
+)
+```
+
+
+## Elements of Structured Data
+
+The two main types of structured data (i.e., data in a table similar to an Excel spreadsheet or something similar) are numeric and categorical:
+
+* Numeric:
+
+  * Continuous: any real number (e.g., velocity, flow rates)
+
+  * Discrete: counts (e.g., number of children per household)
+  
+* Categorical: fixed set of values (e.g., car models, species of fish)
+
+  * Binary: true/false, 0/1, yes/no values
+  
+  * Ordinal: fixed set of values with specified order to denote rating (e.g., 1-5)
+  
+## Estimates of Location
+
+The mean describes the average value, taken by summing all of the values and dividing by the total number of records (i.e., total number of observations).
+
+```{r mean}
+# Define a random dataset
+random_data <- rnorm(100, 10, 5)
+
+# Take the mean
+mean(random_data)
+```
+
+If some cases, the mean may not be an appropriate summary statistic for the dataset.  For example, the presence of outliers could skew the mean and lead to eroneous conclusions.  In these cases, it may be appropriate to use the trimmed mean, which is calculated by dropping a fixed set of of sorted values from each end of the distribution.  The weighted mean is another variation that may be used in situations where data from some features are more important than others, due to intrinsic variability in some features, or due to sampling design that wasn't representative of the entire population.  
+
+We can calculate the trimmed mean using the `mean()` function and declaring the `trim` argument to remove a fraction of observations from each end of the distribution before the mean is calculated.
+
+```{r trimmed-mean}
+mean(random_data, trim = 0.5)
+```
+
+We can calculate the weighted mean using the `weighted.mean()` function, which takes two arguments: `x` to define the object containing the values whose weighted mean we want to calculate; and `w`, to define an object of the same length of `x` giving the weights of each element of `x`.  In the example below, we'll use data from Siegel 1994 (also available in the help documentation) to calculate the weighted GPA, which is the GPA that considers the grade the student received in a course as well as the difficulty of the course.
+
+```{r weighted-mean}
+# GPA from Siegel 1994- example from the help documentation
+wt <- c(5, 5, 4, 1)/15
+x <- c(3.7, 3.3, 3.5, 2.8)
+
+# Calculate the weighted mean pf GPA for each quarter, weighted by the course load
+weighted.mean(x, wt)
+```
+
+## Median and Robust Estimates
+
+ The median is less sensitive to the data, meaning that it is robust to outliers present in a dataset.  In cases with an odd number of records, the median is the middle number; in cases with an even number of records, the median is the average between the two middle numbers that divide the data into lower and upper halves.  
+
+## Anomaly Detection
+
+Although sometimes, outliers (extreme data points far from the mean) are mistakes made from data entry, there would be something interesting going on to warrant further investigation.  In general, though, either the median or trimmed mean are used, trimming 10% of the lowest and highest values from the sorted distribution before calculating the mean, in the latter case.  
+
+## Example: Location Estimates of Population and Murder Rates
+
+In this example, we'll explore the murder rates across the country in the `states.csv` file.
+
+```{r explore-states}
+# Load states file and explore the data
+states <- read_csv("./data/state.csv")
+
+# Look at the states with the highest murder rates
+states %>% 
+  arrange(desc(Murder.Rate)) %>% 
+  kable(format = "html", 
+        format.args = list(big.mark = ",")) %>% 
+  scroll_box(height = "500px", 
+             width = "800px") %>% 
+  kable_material(full_width = TRUE, "striped")
+
+# Scale states data
+states_scaled <- states %>% 
+  mutate(Population = Population / 1e6)
+```
+
+```{r explore-states-plot}
+# Exploratory plot (transform scale to millions)
+states_scaled %>% 
+  ggplot(aes(Population, Murder.Rate)) + 
+  geom_point() +
+  my_theme +
+  scale_x_continuous(n.breaks = 10) +
+  labs(x = "Population (millions)", 
+       y = "Murder rate", 
+       title = "Murder rate for each US state from 2010 census data",
+       subtitle = "Louisiana had the highest murder rate (number of murders per 100,000 people)") +
+  geom_point(data = filter(states_scaled, Abbreviation == "LA"), 
+             color = "red", 
+             size = 2) +
+  geom_label(data = filter(states_scaled, Abbreviation == "LA"),
+             aes(label = State), nudge_x = 4)
+  
+```
+
+We can compute various summary statistics on this dataset to get an overview of murder rates across the United States.
+
+```{r states-mean}
+# Compute various summary stats and print results
+states %>% 
+  summarise(mean_popsize = mean(Population), 
+            mean_trim_popsize = mean(Population, trim = 0.1), 
+            median_popsize = median(Population)) %>% 
+  kable(format = "html", 
+        format.args = list(big.mark = ","), 
+        col.names = c("Mean", "Mean (trimmed)", "Median")) %>%
+  add_header_above(c("Population Size" = 3)) %>% 
+  kable_material(full_width = FALSE, "striped")
+
+```
+
+We can also calculate the weighted mean and median, which will take into account the population size for each state.  The key takeaway here is that both estimates are relatively similar.  
+
+```{r states-weighted-statistics}
+# Calculate weighted statistics for each state based on their population size
+states %>% 
+  summarise(weighted_mean = weighted.mean(x = states$Murder.Rate, 
+                                       w = states$Population), 
+         weighted_median = weightedMedian(x = states$Murder.Rate, 
+                                          w = states$Population)) %>% 
+  kable(format = "html", 
+        col.names = c("Mean", "Median")) %>% 
+  add_header_above(header = c("Weighted statistics" = 2)) %>% 
+  kable_styling(full_width = F, "striped") %>% 
+  kable_material()
+
+```
+
+## Estimates of Variability
+
+Variability describes the spread of data and distinguishing it from real variability.  There are a few terms to review, including deviations (differences between the observed and estimated values, like the mean, for example), variance (sum of squared deviations from the mean, divided by the sample size minus one), and the standard deviation (the square root of the variance).  There are many other metrics used to describe variability, which will be demonstrated using examples below.
+
+One metric to describe variability is the mean absolute deviation, or the average of the absolute differences between the observed and estimated values.  More commonly used metrics are the variance (average of the squared deviations) and the standard deviation.  The latter metric is preferred over the variance because it is in the same scale as the original data.
+
+```{r states-variance-sd}
+# Calculate metrics to describe variability
+states %>% 
+  summarise(mean = mean(Murder.Rate),
+            variance = var(Murder.Rate), 
+            std_dev = sd(Murder.Rate))
+```
+
+Often, the variance and standard deviation formulas use `n-1` in their denominators to generate unbiased estimates.  When using just `n`, the sample estimates of the variance and standard deviations will be biased and underestimate the true population parameters, because of the constraint that the standard deviation requires calculating the sample mean.
+
+Variance and standard deviation are both sensitive to outliers, but another metric, the median absolute deviation from the median (MAD), is not (similar to the median).  
