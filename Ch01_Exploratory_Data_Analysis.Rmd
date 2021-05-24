@@ -21,6 +21,8 @@ library(scales)
 library(patchwork)
 library(kableExtra)
 library(matrixStats)
+library(ggrepel)
+library(corrplot)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -247,4 +249,93 @@ population_plot +
   plot_annotation(tag_levels = "A", 
                   tag_suffix = ")")
 ```
+
+## Statistical Moments
+
+There are four moments of a distribution:
+
+1) Location (referring to mean, median, mode)
+
+2) Variability (e.g., standard deviation, variance, MAD)
+
+3) Skewness (are data skewed to large or small values)
+
+4) Kurtosis (describes the tendency for data to have extreme values)
+
+## Exploring Binary and Categorical Data
+
+In the next section, we'll explore categorical data using the `dfw_airline.csv` dataset, which contains data on the number of delayed flights per year from Dallas/Fort Worth airport due to various reasons: carrier issues, air traffic control problems, weather, security, or issues with inbound flights.
+
+```{r glimpse-dfw-data}
+# Import data
+dfw_airline <- read_csv("./data/dfw_airline.csv")
+
+# View data
+dfw_airline %>% 
+  kbl() %>%
+  kable_styling(full_width = FALSE) %>% 
+  kable_classic_2()
+  
+```
+
+These data can also be represented using a bar plot.
+
+```{r dfw-barplot}
+# Modify dfw airline data with pivot longer
+dfw_airline_longer <- dfw_airline %>% 
+  pivot_longer(cols = everything(),
+               names_to = "Cause_of_delay",
+               values_to = "Num_delays") 
+  
+# Plot
+dfw_airline_longer %>% 
+  ggplot(aes(Cause_of_delay, Num_delays)) +
+  geom_bar(stat = "identity", 
+           position = "dodge") +
+  geom_text(aes(label = Num_delays), 
+            position = position_dodge(width = 0.9), 
+            vjust = -0.25) +
+  my_theme +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Cause of Delay", 
+       y = "Number of delays per year", 
+       title = "Most delays from Dallas/Fort Worth airport are due to incoming flight delays")
+
+```
+
+## Correlation
+
+The correlation describes the relationship between two variables on a continuous -1 to 1 scale.  It is calculated by taking the deviations from the mean for one variable, multiplied by the deviations from the mean for the second variable, and then dividing by the product of the standard deviations.  In this section, we'll explore the `sp500_px.csv` dataset, which contains 5,647 records of telecommunication stocks from 517 different companies over time.  To create the plot in the textbook, we'll also import the `sp500_sym.csv` dataset, which contains data on the company symbols and sectors.  We'll join both of these together, then filter the final dataset to only include those records for major exchange-tranded funds (ETFs) between July 2012 through June 2015. 
+
+```{r telecommunications-data-cleanup}
+# Import returns data
+telecom_returns <- read_csv("./data/sp500_px.csv") %>% 
+  rename("Date" = X1)
+
+# Import metadata
+telecom_metadata <- read_csv("./data/sp500_sym.csv")
+
+# Join
+telecom_returns %>% 
+  filter(Date > "2012-07-01" & Date < "2015-06-01") 
+  pivot_longer(cols = everything(), 
+         names_to = "symbol", 
+         values_to = "daily_returns") %>% 
+  left_join(telecom_metadata, by = "symbol") %>% 
+  filter(sector == "etf") 
+
+```
+
+Now, we'll calculate the correlation of daily returns between all companies.
+
+```{r etf-correlation-plot}
+etf_data %>% 
+  select(symbol, daily_returns) %>% 
+  mutate(rownumber = row_number()) %>% 
+  pivot_wider(id_cols = rownumber, 
+              names_from = "symbol", 
+              values_from = "daily_returns")
+
+```
+
 
