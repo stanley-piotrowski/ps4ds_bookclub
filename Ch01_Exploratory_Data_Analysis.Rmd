@@ -28,7 +28,8 @@ my_theme <- theme(
   panel.background = element_rect(fill = "white", color = "black"),
   
   # Set axis and title themes
-  plot.title = element_markdown()
+  plot.title = element_markdown(),
+  plot.subtitle = element_markdown()
 )
 ```
 
@@ -178,4 +179,72 @@ states %>%
 
 Often, the variance and standard deviation formulas use `n-1` in their denominators to generate unbiased estimates.  When using just `n`, the sample estimates of the variance and standard deviations will be biased and underestimate the true population parameters, because of the constraint that the standard deviation requires calculating the sample mean.
 
-Variance and standard deviation are both sensitive to outliers, but another metric, the median absolute deviation from the median (MAD), is not (similar to the median).  
+Variance and standard deviation are both sensitive to outliers, but another metric, the median absolute deviation from the median (MAD), is not (similar to the median). 
+
+## Estimates Based on Percentiles
+
+The percentile is the value at which a given percentage of the data are a particular value, or less.  For example, if we took a sequence of numbers from 1 to 1,000 and piped them into the `quantile()` function, we'd see that the 25th percentile is 250.75.  In other words, 25% of the values from 1 to 1,000 are 250.75 or less.  The `IQR()` function will yield the interquartile range, or the essentially where the middle 50% of the data lie.  
+
+Below, we'll explore the `states` dataset using the estimates of variability.  
+
+```{r states-variability-plot}
+states %>% 
+  mutate(Population = Population / 1e6) %>% 
+  summarise(SD = sd(Population),
+            IQR = IQR(Population), 
+            MAD = mad(Population)) %>% 
+  pivot_longer(cols = everything(),
+               names_to = "metric",
+               values_to = "estimate") %>% 
+  ggplot(aes(metric, estimate)) +
+  geom_point() +
+  my_theme +
+  labs(x = "Statistic", 
+       y = "Population (millions)")
+  
+```
+
+From this plot, it's obvious that the standard deviation (SD) is about 1.7 times greater than the MAD, because it is sensitive to outliers.  
+
+## Exploring the Data Distribution
+
+There are several additional approaches to visualizing distributions, including histograms and density plots.  These two visualizations are similar, except the histograms are based on binning observations into discrete bins, while the latter involves kernel density estimation (KDE) to approximate the probability distribution.  KDE is a non-parametric approach to approximating the probability distribution because sometimes data don't conform to the standard probability distributions (e.g., if data are bimodal, or multimodal).  In parametric approaches, we can describe the probability distribution using parameters.  For example, if data are normally distributed, we describe the probability distribution using two parameters: the mean and standard deviation.  
+
+To describe the middle 50% of the data for various fields, or the range between the 25th and 75th percentile, we can use a boxplot.  The data points outside of 1.5 times the IQR are defined as outliers (also shown).  Note in the boxplots, the function call should be `ggplot(aes("", Population))`, or else there will be erroneous data on the x-axis.  
+
+```{r states-boxplots}
+# Population
+population_plot <- states_scaled %>% 
+  mutate(Outlier = case_when(
+    Population > quantile(Population, 0.75) + 1.5 * IQR(Population) ~ "Outlier",
+    TRUE ~ "Nonoutlier")
+  ) %>% 
+  ggplot(aes("", Population)) +
+  geom_boxplot(outlier.color = "red") +
+  my_theme +
+  theme(axis.title.x = element_blank()) +
+  labs(y = "Population (millions)", 
+       title = "The median population size in the<br>United States is 4.4 million people", 
+       subtitle = "There are four outliers by population size:<br>California (37.3), Texas (25.1),<br>New York (19.4), and Florida (18.8)") 
+
+# Murder rate
+murder_rate_plot <- states_scaled %>% 
+  mutate(Outlier = case_when(
+    Murder.Rate > quantile(Murder.Rate, 0.75) + 1.5 * IQR(Murder.Rate) ~ "Outlier",
+    TRUE ~ "Nonoutlier")
+  ) %>% 
+  ggplot(aes("", Murder.Rate)) +
+  geom_boxplot(outlier.color = "red") +
+  my_theme +
+  theme(axis.title.x = element_blank()) +
+  labs(y = "Murder rate", 
+       title = "The median murder rate<br>(# murders/100K) in the<br>United States is 4.0",
+       subtitle = "Louisiana is the only outlier with<br>a murder rate of 10.0")
+
+# Put them together
+population_plot +
+  murder_rate_plot +
+  plot_annotation(tag_levels = "A", 
+                  tag_suffix = ")")
+```
+
