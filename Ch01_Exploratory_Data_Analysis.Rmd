@@ -23,6 +23,7 @@ library(kableExtra)
 library(matrixStats)
 library(ggrepel)
 library(corrplot)
+library(RColorBrewer)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -315,10 +316,10 @@ telecom_returns <- read_csv("./data/sp500_px.csv") %>%
 # Import metadata
 telecom_metadata <- read_csv("./data/sp500_sym.csv")
 
-# Join
-telecom_returns %>% 
-  filter(Date > "2012-07-01" & Date < "2015-06-01") 
-  pivot_longer(cols = everything(), 
+# Join and maintain the Date variable
+etf_data <- telecom_returns %>% 
+  filter(Date > "2012-07-01" & Date < "2015-06-01") %>% 
+  pivot_longer(!Date, 
          names_to = "symbol", 
          values_to = "daily_returns") %>% 
   left_join(telecom_metadata, by = "symbol") %>% 
@@ -326,16 +327,111 @@ telecom_returns %>%
 
 ```
 
-Now, we'll calculate the correlation of daily returns between all companies.
+Now, we'll calculate the correlation of daily returns between all companies by pivoting the data frame back to wide format.  [This](https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html) site provides a thorough introduction to the various options to customize correlation plots. 
 
 ```{r etf-correlation-plot}
-etf_data %>% 
-  select(symbol, daily_returns) %>% 
-  mutate(rownumber = row_number()) %>% 
-  pivot_wider(id_cols = rownumber, 
+# Pivot wider, using the Date column as the id_col
+etf_data_wide <- etf_data %>% 
+  pivot_wider(id_cols = Date, 
               names_from = "symbol", 
               values_from = "daily_returns")
 
+# Correlation plot
+etf_data_wide %>% 
+  select(-Date) %>% 
+  cor() %>% 
+  corrplot(method = "color", 
+           diag = FALSE, 
+           type = "full", 
+           col = brewer.pal(n = 10, name = "RdBu"), 
+           
+           # Modify the plot labels
+           tl.col = "black", 
+           tl.srt = 45, 
+           tl.cex = 0.75,
+  )
 ```
 
+From this correlation plot, we can see that there are some ETFs that are strongly positively correlated (correlation coefficients near 1), while others are not correlated (correlation coefficients near 0), or are negatively correlated (correlation coefficients between -0.4 and -0.5).  Some of the ETFs that have strong positive correlations are the S&P 500 (SPY), Invesco (QQQ), Indus (XLI), and the Dow Jones Industrial Average (DIA), among others.  Let's see what types of companies those are, and if that gives us an indication as to why they may have such strong positive correlations.
 
+```{r strong-positive-correlations}
+telecom_metadata %>% 
+  filter(symbol %in% c("SPY", "QQQ", "XLI", "DIA"))
+```
+These are all rather broad ETFs.  There are many other stocks that have negative correlations, including iPath Series B (VXX) and the same ETFs mentioned above.  
+
+```{r negative-correlations}
+telecom_metadata %>% 
+  filter(symbol == "VXX")
+```
+
+Interestingly, this is also an ETF under the broad subsector category, but the textbook describes that this particular ETF tends to track market volatility and may be negatively correlate with other ETFs.  
+
+## Scatterplot
+
+In addition to using correlation plots, scatterplots can be used to understand the relationship between two variables.  For example, we can create a scatterplot to visualize the correlation between daily returns from Verizon (VZ) and AT&T (T) from the telecommunications datasets.
+
+```{r att-versus-verizon-scatterplot}
+# Isolate verizon and att and plot
+telecom_returns %>% 
+  select(Date, T, VZ) %>% 
+  ggplot(aes(T, VZ)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(color = "red", 
+              linetype = "dashed") +
+  my_theme +
+  labs(x = "AT&T daily returns", 
+        y = "Verizon daily returns", 
+        title = "Correlation in daily returns between AT&T and Verizon", 
+        subtitle = "Data are from January 29, 1993 to July 1, 2015")
+  
+
+```
+
+From this plot, we can see that on most dates, the returns are near zero, but when they do fluctuate, they tend to fluctuate together (i.e., when Verizon returns increase, so do AT&T).  
+
+## Hexagonal Binning and Contours
+
+In this section, we'll use the `kc_tax.csv` dataset, which contains tax-assessed vales for residential properties in King County, WA (population estimate of 2,252,782 in 2019), which includes cities like Seattle and Kent.  We'll filter the dataset to include homes with tax-assessed value less than $750,000 and living space between 100 and 3,500 square feet.
+
+```{r kc_tax-data-filtering}
+# Import data
+kc_tax <- read_csv("./data/kc_tax.csv")
+
+# Filter
+kc_tax0 <- kc_tax %>% 
+  filter(TaxAssessedValue < 750000 & 
+           between(SqFtTotLiving, 100, 3500))
+```
+
+Now, we'll bin records into hexagonal bins to explore the relationship between tax-assessed value and square feet. 
+
+```{r kc-tax-hexagonal-binning-plot}
+# Bin into hexagons and plot
+kc_tax0 %>% 
+  mutate(TaxAssessedValue = TaxAssessedValue / 1000) %>% 
+  ggplot(aes(SqFtTotLiving, TaxAssessedValue)) +
+  geom_hex() +
+  scale_fill_viridis_c() +
+  my_theme +
+  labs(x = "Living space (square feet)",
+       y = "Tax assessed value (thousands of USD)",
+       title = "Relationship between living space and tax-assessed value<br>
+       in King County, WA")
+
+```
+
+There is a distinctive band where many of the records are binned, which generally indicates that homes with more square feet tend to increase in tax-assessed value.  However, we can also see that there are at least two distinct bands with fewer records above that main band, indicating there are homes with the same square footage with higher tax-assessed value.  It seems plausible that the homes with the highest tax-assessed value could be in areas like Seattle or suburbs directly outside of the city.  We can explore the relationship between these variables using a contour plot as well.
+
+```{r contour-plot}
+kc_tax0 %>% 
+  mutate(TaxAssessedValue = TaxAssessedValue / 1000) %>% 
+  ggplot(aes(SqFtTotLiving, TaxAssessedValue)) +
+  geom_point(alpha = 0.1) +
+  geom_density2d() +
+  my_theme +
+  labs(x = "Living space (square feet)", 
+       y = "Tax-assessed value (thousands of USD)")
+```
+
+Contour plots show the same general relationship as hexagonal binning plots, but use contour lines to represent the density of records.  The closer the contour lines are together, the higher the density of records.  Using this approach, we can see the same general density of records in the main band, and several others above as well.
