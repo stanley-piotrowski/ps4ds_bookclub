@@ -8,6 +8,18 @@ output:
     highlight: tango
 ---
 
+## Introduction
 
+In general, we're interested in understanding fundamental processes about a population, which cannot be measured directly.  Thus, the population distribution is typically unknown, so we take representative samples from that broader population and rely on various assumptions to make inference about the population from the sample.  
+
+## Random Sampling and Sample Bias 
+
+Ideally, all samples are drawn from a population at random, meaning that any member of the population has an equal probability of being sampled.  Samples may be stratified random if groups are first subdivided, and then sampled randomly from within their respective groups.  For example, if you were enrolling patients in a clinical trial to measure the efficacy of a new therapeutic agent, you could first divide participants into "experimental" and "control" groups.  Within these groups, you could then randomly select volunteers that could be drawn to be used in the study to minimize bias.  Bias is systematic error that could arise from a number of different issues, including confounding factors, known issues with the estimator given the sampling design, etc.  In a sampling scheme, sampling bias refers to the collection of a non-representative sample from a population.  The key concept of sampling bias is the methodology used to collect the sample, in that it will likely generate biased samples in the future with the same approach.  For example, product reviews are often biased because the probability of someone writing one of the reviews is not random: it is likely that the authors are on the extreme ends of the distribution regarding their satisfaction  Further, not everyone would typically take the time to write a review in the first place.  Thus, if your purchasing decisions were based exclusively on reviews from Amazon or another retailer, your interpretation of the products would likely be biased.  Bias can also creep into an analysis intentionally or unintentionally in processes collectively known as selection bias.  This could include trying to find hidden patterns in data that fit preconceived ideas, or modifying pre-planned experimental designs when interesting patterns emerge.  
+
+## Regression to the Mean
+
+Although the concept of regression to the mean is somewhat confusing, it is an important concept that demonstrates selection bias in many different examples.  The idea postulates that extreme observations tend to be followed by less extreme, or central, observations.  The authors used the example of sports performance and the "rookie of the year" effect, where there are some players that tend to do extremely well, far better than others, during their first year.  This is largely a combination of skill and luck, the latter of which wears off after the first year, so the performance of those players tends to drop the second year towards less extreme values.
+
+## Sampling Distribution of a Statistic
 
 
