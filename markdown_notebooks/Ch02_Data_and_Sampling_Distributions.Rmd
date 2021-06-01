@@ -1,0 +1,13 @@
+---
+title: "Chapter 2: Data and Sampling Distributions"
+output:
+  html_notebook:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: tango
+---
+
+
+
+
