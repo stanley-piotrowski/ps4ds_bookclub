@@ -24,6 +24,7 @@ library(matrixStats)
 library(ggrepel)
 library(corrplot)
 library(RColorBrewer)
+library(descr)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -428,10 +429,142 @@ kc_tax0 %>%
   mutate(TaxAssessedValue = TaxAssessedValue / 1000) %>% 
   ggplot(aes(SqFtTotLiving, TaxAssessedValue)) +
   geom_point(alpha = 0.1) +
-  geom_density2d() +
+  geom_density2d(color = "blue") +
   my_theme +
   labs(x = "Living space (square feet)", 
        y = "Tax-assessed value (thousands of USD)")
 ```
 
 Contour plots show the same general relationship as hexagonal binning plots, but use contour lines to represent the density of records.  The closer the contour lines are together, the higher the density of records.  Using this approach, we can see the same general density of records in the main band, and several others above as well.
+
+## Contingency tables for two categorical variables
+
+This section focuses on displaying counts of categorical data using the `loan_data.csv` dataset.  This is the larger dataset from the textbook that contains information on status of each loan, the loan amount, term, annual income of the borrower, whether or not the borrower is a renter or a homeowner, the purpose of the loan (e.g., debt consolidation, small business, major purchase, etc), and other data.
+
+```{r loan-dataset}
+# Load the loan dataset
+loan_data <- read_csv("./data/loan_data.csv") %>% 
+  rename(row_number = X1)
+
+# Print a subset to the screen
+loan_data %>% 
+  head() %>% 
+  kbl() %>% 
+  kable_styling(full_width = TRUE, 
+                "striped") %>% 
+  kable_classic_2() %>% 
+  scroll_box()
+  
+```
+
+
+The example in the textbook is slightly different where they create a contingency table based on the loan grade and status.  Here, we'll create a contingency table based on the term and status of the loan.  We'll include the same additional data as the textbook: for each term amount, we'll include data on the number of loans that were charged off, currently active, fully paid, and late, as well display the total for each category.  We'll first create the table using `dplyr`, then create a similar table using the `CrossTable()` function from the `descr` package.
+
+
+```{r contingency-table-loans-dplyr}
+# Create a contingency table for the categorical data
+loan_data %>% 
+  group_by(status, term) %>% 
+  summarise(n = n()) %>% 
+  pivot_wider(names_from = "status", 
+              values_from = "n") %>% 
+  group_by(term, `Charged Off`, Default, `Fully Paid`) %>% 
+  mutate(Total = `Charged Off` + Default + `Fully Paid`) %>% 
+  kbl(format.args = list(big.mark = ","), caption = "Table of charged off, default, and fully paid loans by term") %>% 
+  kable_styling(full_width = FALSE, 
+                "striped") %>% 
+  kable_classic_2()
+
+```
+
+## Categorical and numeric data
+
+We can visualize differences between counts across categorical variables using `airline_stats.csv`, which contains data on the daily percentage of flights that were due to delays from carriers, air traffic control (ATC), or weather, by airline.
+
+```{r airline-stats}
+# Load the dataset
+airline_stats <- read_csv("./data/airline_stats.csv")
+
+# Print
+airline_stats %>% 
+  head() %>% 
+  kbl(caption = "Subset of airline statistics data with delays for each category by airline") %>% 
+  kable_styling(full_width = FALSE, 
+                "striped") %>% 
+  kable_classic_2()
+```
+
+We can visualize the distribution of counts for each category by airline using boxplots.
+
+```{r airline-stats-boxplot}
+# Visualize the distribution of delays for each category by airline
+# First reformat the data
+airline_stats_v2 <- airline_stats %>% 
+  pivot_longer(cols = contains("pct"), 
+               names_to = "delay", 
+               values_to = "percentage_flights") %>% 
+  mutate(delay = 
+           case_when(delay == "pct_atc_delay" ~ "ATC", 
+                     delay == "pct_carrier_delay" ~ "Carrier", 
+                     TRUE ~ "Weather"))
+
+# Plot
+airline_stats_v2 %>% 
+  ggplot(aes(airline, percentage_flights)) +
+  geom_boxplot(na.rm = TRUE) +
+  facet_wrap(~delay) +
+  my_theme +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(x = "Airline", 
+       y = "Daily % of delayed flights", 
+       title = "Percentage of delayed daily flights by airline")
+
+```
+
+Southwest has the lowest percentage of delayed daily flights due to ATC issues, but Alaska Airlines has the lowest due to carrier issues.  There are only marginal differences in the median daily percentage of delayed flights due to weather, presumably because if weather in a given location has delayed one carrier, it's likely it will delay another carrier as well (assuming we're not considering location-specific flight patterns for some airlines).  We can also see this represented in a violin plot, which shows the density of the distribution along the y-axis as well.  
+
+```{r airline-stats-violin-plot, warning = FALSE}
+# Generate a violin plot from the same data
+airline_stats_v2 %>% 
+  ggplot(aes(airline, percentage_flights)) +
+  geom_violin(na.rm = TRUE, 
+              fill = "lightskyblue", 
+              draw_quantiles = c(0.5)) +
+  facet_wrap(~delay) +
+  my_theme +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  labs(x = "Airline", 
+       y = "Daily % of delayed flights", 
+       title = "Violin plot of the daily percentage of delayed flights by airline", 
+       subtitle = "The median is draw as a solid black line in each of the density plots")
+
+```
+
+## Visualizing Multiple Variables
+
+In this section, we'll visualize multiple variables conditionally using `facet_wrap()`.  We'll use the `kc_tax0` data to further explore some of the differences in tax-assessed value of homes with the same square footage but in different zip codes.  For example, we'll filter only the zip codes 98105, 98108, 98126, and 98188, which correspond to the University District and Laurelhurst, South Seattle and Georgetown near the Boeing factory, West Seattle, and McMicken Heights adjacent to Seattle-Tacoma International Airport.
+
+```{r kc_tax0-facet-zipcode-plot}
+# Generate hexagon plot with four different zip codes in WA
+kc_tax0 %>% 
+  filter(ZipCode %in% c("98105", "98108", "98126", "98188")) %>% 
+  mutate(TaxAssessedValue = TaxAssessedValue / 1000,
+         Location = case_when(
+           ZipCode == "98105" ~ "UW District & Laurelhurst", 
+           ZipCode == "98108" ~ "South Seattle & Georgetown",
+           ZipCode == "98126" ~ "West Seattle", 
+           TRUE ~ "McMiken Heights")
+  ) %>% 
+  ggplot(aes(SqFtTotLiving, TaxAssessedValue)) +
+  geom_hex() +
+  scale_fill_viridis_c() +
+  facet_wrap(~Location) +
+  my_theme +
+  labs(x = "Living space (square feet)", 
+       y = "Tax-assessed value (thousands of USD)",
+       title = "The UW District and Laurelhurst are the most expensive across four zip codes")
+
+```
+
+The figure above demonstrates holding all other factors constant, the tax-assessed value of a home in the UW District or Laurelhurst neighborhoods will tend to be more expensive than a home of the same square footage in another Seattle neigborhood like McMiken Heights, South Seattle and Georgetown, or West Seattle.
+
