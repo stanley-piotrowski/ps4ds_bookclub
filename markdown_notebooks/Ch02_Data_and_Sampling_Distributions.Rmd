@@ -22,4 +22,12 @@ Although the concept of regression to the mean is somewhat confusing, it is an i
 
 ## Sampling Distribution of a Statistic
 
+A few terms to describe sampling distributions and related metrics are described below:
+
+* Sampling distributions refer to the distribution of a sample statistic obtained over repeated sampling.  For instance, the sample distribution of the sample mean is the distribution of the mean of a sample, obtained through repeated measurements to find the sample mean.  
+
+* Data distributions refer to the distribution of values in a dataset.  
+
+* The central limit theorem describes the observation that as sample sizes increase, the data distribution tends to become more normal, or bell-shaped.
+
 
