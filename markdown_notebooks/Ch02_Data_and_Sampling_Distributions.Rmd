@@ -8,6 +8,28 @@ output:
     highlight: tango
 ---
 
+```{r setup, warning FALSE, message = FALSE}
+# Load libraries
+library(tidyverse)
+library(RColorBrewer)
+library(ggtext)
+library(boot)
+library(kableExtra)
+library(patchwork)
+
+# Set ggplot2 theme
+my_theme <- theme(
+  panel.background = element_rect(fill = "white", 
+                                  color = "black"),
+  panel.grid = element_blank(),
+  plot.title = element_markdown(),
+  plot.subtitle = element_markdown()
+)
+
+```
+
+
+
 ## Introduction
 
 In general, we're interested in understanding fundamental processes about a population, which cannot be measured directly.  Thus, the population distribution is typically unknown, so we take representative samples from that broader population and rely on various assumptions to make inference about the population from the sample.  
@@ -29,5 +51,291 @@ A few terms to describe sampling distributions and related metrics are described
 * Data distributions refer to the distribution of values in a dataset.  
 
 * The central limit theorem describes the observation that as sample sizes increase, the data distribution tends to become more normal, or bell-shaped.
+
+To demonstrate the concepts of data distributions and sampling distributions, we can use the `loans_income.csv` file which contains data on the annual income of loan applicants to LendingClub.  In the exercise, we'll first draw the data distribution, then calculate the 
+
+```{r lc-loans-distribution-plots}
+# Load the lc_loans data
+loans_income <- read_csv("../data/loans_income.csv") %>% 
+  rename(annual_income = x)
+
+# Sample 1000 observations without replacement (default)
+data_distribution <- data.frame(income = sample(loans_income$annual_income, 1000), 
+           type = "data_distribution") 
+
+# Take a sample of means of 5 values
+# The code works by sampling 1,000 values, 5 times to generate an array
+# Then, from 1 to 1,000 values, rep 5 values 1,000 times and take the mean to generate 1,000 sample means of 5 values
+sample_mean_05 <- data.frame(income = tapply(sample(loans_income$annual_income, 1000*5), 
+       rep(1:1000, rep(5, 1000)), FUN = mean),
+       type = "sample_mean_05")
+
+# Now do the same thing for a sample of means of 20 values
+sample_mean_20 <- data.frame(income = tapply(sample(loans_income$annual_income, 1000*20), 
+       rep(1:1000, rep(20, 1000)), FUN = mean), 
+       type = "sample_mean_20")
+
+# Put all observations in data frames
+income_data_combined <- rbind(data_distribution, 
+                              sample_mean_05, 
+                              sample_mean_20)
+
+# Plot
+income_data_combined %>% 
+  mutate(income = as.numeric(income), 
+         type = case_when(
+           type == "data_distribution" ~ "Data distribution",
+           type == "sample_mean_05" ~ "Sample of 5 means",
+           TRUE ~ "Sample of 20 means"
+         )) %>% 
+  ggplot(aes(income)) +
+  geom_histogram(bins = 40) +
+  facet_grid(type ~ ., 
+             scales = "fixed") +
+  my_theme +
+  labs(x = "Income (USD)", 
+       y = "Count", 
+       title = "Distribution of loan income data, sample of 20 means, and sample of 5 means")
+
+
+```
+
+From this plot, we can see that the data distribution is rather broad, and when we take 1,000 samples of 5 means, the distribution becomes less broad.  When we take 1,000 samples of 20 means, the distribution appears more normal like a bell-shaped curve, demonstrating the central limit theorem.  Further, the central limit theorem states that even if the distribution from which the means were drawn is not normally distributed, the mean drawn from many samples (assuming the samples are large enough; see the plot with 1,000 samples of 20 means) will be normally distributed.
+
+## Standard Error
+
+The standard error describes the variability around estimated sample statistics.  It is calculated by dividing the standard deviation of the sample statistics by the square root of the sample size.  It holds that as the sample size increases, the standard error, or the variability in sample statistics, decreases.  This is intuitive: if you repeatedly collect samples to calculate the sample mean, the variability in your estimates will likely be greater if you only take 5 samples to calculate the sample means as opposed to 20 samples.  In fact, we can calculate the standard error from the previous exercises.  The standard error for 1,000 samples of 5 means is approximately 470; the standard error for 1,000 samples of 20 means is approximately 232.  This demonstrates the concept of the central limit theorem, but it relies on repeatedly collecting samples, which may not be feasible in some situations.  Instead, the bootstrap method is often utilized to calculate the standard error.    
+
+```{r standard-error-sample-means}
+# Calculate the standard error of the 1000 samples of 5 means
+sd(sample_mean_05$income) / sqrt(1000) # about 470
+
+# Calculate the standard error of the 1000 samples of 20 means
+sd(sample_mean_20$income) / sqrt(1000) # about 232
+```
+
+## The Bootstrap
+
+One of the most powerful methods for calculating the sampling distribution of a test statistic is to use the bootstrap, which draws repeated samples from the data (with replacement, meaning the same observations may be drawn 0, 1, or many times).  This method makes no assumptions about the underlying distribution of the data or the sample statistic (e.g., that the sampling distribution of the test statistic is normally distributed).  For example, if we wanted to estimate the standard error of the sample mean by boostrapping, we would draw an observation from the original data, record the value, then replace the observation.  Recall, that observation may be drawn 0, 1, or many more times.  After a defined number of draws, we can calculate the sample mean, and repeat the entire process over again.  Then, we can calculate the standard deviation and divide by the square root of the sample size to obtain an estimate of the standard error.  In general, the higher the number of bootstraps, the more accurate the estimate of the standard error will be.  We'll use the `boot` package to draw repeated samples from the `loans_income` data and calculate the median value.  [This page](https://www.mayin.org/ajayshah/KB/R/documents/boot.html) provides a good introduction to using the `boot()` function.  Essentially, we'll write a function that will take two arguments: the data to operate on, and a variable to hold indexes for subsetting the original data.  The `boot()` function will draw a set of indexes to subset the original data and pass the function (e.g., `median()`), for each iteration (or repetition), store the resulting value, and then draw a new set of indexes.  
+
+```{r bootstrap-median-income}
+# Define the statistic to be calculate
+stat_function <- function(x, idx) {
+  return(median(x[idx]))
+}
+
+# This function will calculate the median of x for each index
+# In the boot() function call, each index will be the given iteration defined by R
+
+# Run the boostrap function
+boot_obj <- boot(loans_income$annual_income, 
+                 R = 1000, 
+                 statistic = stat_function)
+
+# Print the summary of the bootstrap object
+boot_obj
+```
+The resulting class `boot` object provides information on the parameters passed in the function call and the overall bootstrap statistics: the original value of the statistic (i.e., the median) calculated from the original data, without bootstrapping; the bias, which is the difference between the estimated value (i.e., the value estimated from bootstrap resampling) and the actual value; and the standard error, or the standard deviation of the test statistic (i.e., the median) divided by the square root of the sample size.  In this case, the bias estimate is negative, meaning the actual value is greater than the expected value; in other words, the bootstrap resampling method underestimated the median annual income.  
+
+```{r bootstrap-summary}
+# Get the summary information
+summary(boot_obj)
+```
+
+There are additional data in the `boot` object.  Some of them are defined below:
+
+* `t0`: this is the actual value calculated from the original data.
+
+* `t`: matrix object with the value of the statistic for each of the bootstrap replicates.
+
+* `R`: the value of `R` passed to the function `boot()`, or the number of bootstrap replicates.
+
+* `data`: the original data passed to the `boot()` function.
+
+* `seed`: the value of `.Random.seed` passed to `boot()` (if you want to replicate the results, set the seed).
+
+We can see how well the bootstrapped estimate compared to the actual estimate by plotting the bootstrap estimates and labeling the actual median in a density plot.
+
+```{r bootstrap-histogram}
+# Plot the bootstrap estimates and the actual median from the original data
+data.frame(boot_median = boot_obj$t) %>% 
+  ggplot(aes(boot_median)) +
+  geom_density(fill = "lightskyblue") +
+  geom_vline(xintercept = boot_obj$t0, 
+             linetype = "dashed") +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+  labs(x = "Bootstrapped median estimate", 
+       y = "Density", 
+       title = "Distribution of bootstrapped median estimates of annual income (_n_ = 1,000)", 
+       subtitle = "Actual median annual income is $62,000 and denoted by a black line")
+```
+
+From this plot, we can see that a large proportion of the bootstrapped median estimates of annual income are close to the actual estimate.  However, because the bootstrap sampling procedure is random, the estimates may be slightly different, hence why some of the estimates are relatively low compared to the actual estimate (e.g., $61,200), which leads to the negative bias.  Let's try this again with 10,000 boostrap replicates and see how the sampling distribution of the median changes with more replicates.
+
+```{r bootstrap-median-more-reps}
+# Calculate the bootstrapped median estimates with 10,000 reps
+boot_obj_v2 <- boot(loans_income$annual_income, 
+                    R = 10000, 
+                    statistic = stat_function)
+
+# Print data output
+boot_obj_v2
+```
+We can see that additional bootstrap resamplings did a little bit better, but still tends to underestimate the median annual income.  This highlights an important consideration when using the bootstrap- it doesn't create new data, so it cannot resolve issues with data quality or gaps that are present in the original data.  It is an approach to evaluate how repeated sampling would impact the sampling distribution if repeated samples were drawn from a population similar to the original data.  
+
+## Confidence Intervals
+
+Confidence intervals help to quantify uncertainty around estimates, and can be practically thought of as the percentage of sample estimates that should contain additional sample estimates, assuming that similar sampling procedures are used in the future.  For example, if we wanted to estimate the mean male human height in an office, we could sample 100 males and estimate the mean of the population using that sample.  We could then calculate the confidence interval around that point estimate of the sample mean to estimate the percentage of resamplings that would also contain that same sample mean if we used a similar sort of sampling procedure.  In the context of bootstrap resampling, we could say that a 95% confidence interval is the central 95% of the bootstrap sampling estimates (essentially trimming the most extreme values from either end of the distribution).  
+
+We can recreate the figure from the textbook to demonstrate how to visualize confidence intervals below.  We'll use the `boot.ci()` function, which takes the argument `boot.out` as the object of class `boot` containing the output of the bootstrap calculations in the `t` slot and a vector of confidence levels.  The default confidence level is 95%, but we'll also need to define the type of confidence interval to calculate.  For this plot, we'll calculate the normal confidence interval.  
+
+```{r confidence-interval-plot}
+# Define statistics function
+boot_mean <- function(x, idx) {
+  return(mean(x[idx]))
+}
+
+# Calculate bootstrapped mean
+boot_obj_mean <- boot(loans_income$annual_income, 
+                      R = 1000, 
+                      statistic = boot_mean)
+
+# Calculate the confidence intervals around the bootstrap estimates
+boot_ci_mean <- boot.ci(boot.out = boot_obj_mean, 
+        type = "norm")
+
+# PLot
+data.frame(bootstrap_mean = boot_obj_mean$t) %>% 
+  ggplot(aes(bootstrap_mean)) +
+  geom_density(fill = "lightskyblue") +
+  geom_vline(xintercept = c(mean(boot_obj_mean$t), 
+                            boot_ci_mean$normal[2], 
+                            boot_ci_mean$normal[3]), 
+             linetype = c("solid",
+                          "dashed", 
+                          "dashed")) +
+  my_theme +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+  labs(x = "Bootstrap mean annual income (USD)", 
+       y = "Density", 
+       title = "Distribution of bootstrap estimates of the mean annual income of lenders", 
+       subtitle = "95% CI ($68,473, $69,052) are given as dashed lines around the mean ($68,757; solid line)")
+```
+
+Some of the key takeaways from this section are that confidence intervals are generally calculated using bootstrapping and give some level of uncertainty around a sample estimate, not necessarily the probability of the true population parameter.  Recall, confidence intervals give an estimate of the range of plausible values that a sample statistic may take given repeated sampling, if samples like the original one are drawn again.  
+
+## Normal Distribution
+
+The standard normal distribution describes a distribution of data with a mean of 0 and a standard deviation of 1.  In the broader normal distribution, we describe the distribution of observations in relation to the mean.  When data follow a normal distribution, 68% of data are within one standard deviation from the mean, 95% of data are within 2 standard deviations of the mean, and approximately 98% of the data are within three standard deviations from the mean.  The QQ-plot is a tool used to evaluate how closely data fit a given distribution.  First, we'll use the `rnorm()` function to sample 100 values from the standard normal distribution (mean = 0; standard deviation = 1).  Second, we need to calculate the z-score, or the standardized value obtained from subtracting the mean and dividing by the standard deviation for each observation.  
+
+```{r z-distribution-plot}
+# Sample 100 values from a standard normal distribution with mean = 0 and standard deviation = 1
+norm_samp <- rnorm(100)
+
+# Calculate the z-score by subtracting the mean and dividing by the standard deviation
+z_scores <- data.frame(value = norm_samp, 
+           mean = mean(norm_samp), 
+           sd = sd(norm_samp)) %>% 
+  mutate(z_score = (value - mean) / sd)
+
+# Plot z-scores
+z_scores %>% 
+  ggplot(aes(z_score)) +
+  geom_density(fill = "lightskyblue", 
+               alpha = 0.6) +
+  geom_vline(xintercept = 0, 
+             linetype = "dashed") +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+  labs(x = "Z-score", 
+       y = "Density",
+       title = "Distribution of z-scores for data sampled from a standard normal distribution")
+
+```
+
+The z-scores correspond to the number of standard deviations from the mean for each observation in the original data.  In the plot above, we can see that most of the z-scores are near 0.  Let's explore this further with a QQ-plot, which we can create using the `stat_qq()` function in `ggplot2`.
+
+```{r qq-plot}
+# Create the qq-plot
+z_scores %>% 
+  ggplot(aes(sample = value)) +
+  stat_qq() +
+  stat_qq_line(color = "red", 
+               linetype = "dashed") +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  labs(x = "Quantile from normal distribution", 
+       y = "Z-score",
+       title = "QQ-plot of z-scores from mean annual income of lenders")
+```
+
+We can see from the plot above that most of the data follow the standard normal distribution.  
+
+## Long-Tailed Distributions
+
+Many raw data are not normally distributed and may have long tails, or many extreme values, and some may be skewed, having many more extreme values on one end of the distribution compared to the other.  To illustrate this, we'll look at the daily stock returns of Netflix from the `sp500_px` data.
+
+```{r netflix-stock-distribution}
+# Load the stock returns data
+sp500_px <- read_csv("../data/sp500_px.csv") %>% 
+  rename(date = X1)
+
+# Pivot longer
+sp500_px_netflix <- sp500_px %>% 
+  pivot_longer(-date, 
+               names_to = "company",
+               values_to = "daily_returns") %>% 
+  filter(company == "NFLX" & daily_returns > 0)
+
+# Plot the distribution of Netflix daily stock returns
+distribution_plot <- sp500_px_netflix %>% {
+  ggplot(., aes(daily_returns)) +
+  geom_density(fill = "lightskyblue", 
+               alpha = 0.75) +
+  geom_vline(xintercept = c(mean(.$daily_returns), 
+                             mean(.$daily_returns) - sd(.$daily_returns), 
+                             mean(.$daily_returns) + sd(.$daily_returns)), 
+             linetype = c("solid", 
+                          "dashed",
+                          "dashed")) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+  my_theme +
+  labs(x = "Daily returns",
+       y = "Density", 
+       title = "Daily returns for Netflix (NFLX) on<br>the SP500 index", 
+       subtitle = "Mean (0.296) is as solid line; mean plus one<br>standard deviation (0.75) is a dashed line")
+}
+
+# Plot the QQ-plot
+qq_plot <- sp500_px_longer %>% 
+  filter(company == "NFLX" & daily_returns > 0) %>% 
+  ggplot(aes(sample = daily_returns)) +
+  stat_qq() +
+  stat_qq_line(color = "red", 
+               linetype = "dashed") +
+  my_theme +
+  labs(x = "Quantile of the normal distribution", 
+       y = "Z-score", 
+       title = "QQ-plot of z-scores of daily returns<br>for Netflix (NFLX)",
+       subtitle = "Z-scores are black circles; theoretical line<br>of the normal distribution is a red dashed line") +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02)))
+
+# Put plots together
+distribution_plot +
+  qq_plot
+```
+
+We can see from the data distribution plot on the left that the daily returns for Netflix are heavily skewed to the right, and thus do not follow a normal distribution.  We can also clearly see this from the QQ-plot as well, where most of the data do not fit the expected values if they followed a normal distribution (i.e., where 68% of the data fall within one standard deviation from the mean and 95% of data fall within two standard deviations from the mean).  One of the most widely used normal distributions is the t-distribution, which is often used to compare sampling distributions of test statistics after standardization.  The t-distribution follows a normal distribution, generally with thicker tails, and has degrees of freedom to adjust to different sample sizes.  
+
+
+
 
 
