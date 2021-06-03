@@ -335,6 +335,24 @@ distribution_plot +
 
 We can see from the data distribution plot on the left that the daily returns for Netflix are heavily skewed to the right, and thus do not follow a normal distribution.  We can also clearly see this from the QQ-plot as well, where most of the data do not fit the expected values if they followed a normal distribution (i.e., where 68% of the data fall within one standard deviation from the mean and 95% of data fall within two standard deviations from the mean).  One of the most widely used normal distributions is the t-distribution, which is often used to compare sampling distributions of test statistics after standardization.  The t-distribution follows a normal distribution, generally with thicker tails, and has degrees of freedom to adjust to different sample sizes.  
 
+## Binomial Distribution
+
+The binomial distribution, also referred to as the Bernoulli distribution, is the set of successes in a series of binary trials with two possible outcomes.  In most cases, each outcome has an equal probability of success.  For example, when flipping a coin, there is an equal probability that the coin will land on heads versus tails.  However, in other cases, the probability of success may be different than the probability of failure (e.g., mouse clicks on a particular website advertisement).  In cases where we want to know the probability of a defined number of outcomes, given a number of trials, and the probability of the outcome in each trial, we can use the `dbinom()` function.  For example, using the example from the textbook, if we want to know the probability of observing exactly 0 sales out of 200 mouse clicks on a particular advertisement, and we know the probability of mouse click translating into a sale, we'd write something like this:
+
+```{r probability-sales-clicks}
+# Calculate the probability of sales based on mouse clicks
+dbinom(x = 0, size = 200, p = 0.02)
+```
+
+Following the binomial distribution (either a sale occurs, or it doesn't), the probability of exactly 0 sales out of 200 clicks is relatively low.  In other words, following the binomial distribution, we would expect 0 sales out of 200 clicks about 2% of the time.  In other cases, we may be interested in the probability of observing a given number of outcomes or fewer out of a total number of trials and some probability of the outcome in each trial.  For example, maybe we're interested in 3 or fewer sales out of 200 clicks, again given the probability of a clicks translating to a sale is 0.02.  In this case, we'd use the `pbinom()` function.
+
+```{r probabiliy-sales-clicks-2}
+# Calculate probability of 3 or fewer sales
+pbinom(q = 3, size = 200, prob = 0.02)
+```
+
+From this output, we would conclude that out of 200 clicks, we'd expect to see 3 or fewer sales about 43% of the time.  
+
 
 
 
