@@ -353,7 +353,40 @@ pbinom(q = 3, size = 200, prob = 0.02)
 
 From this output, we would conclude that out of 200 clicks, we'd expect to see 3 or fewer sales about 43% of the time.  
 
+## Chi-Square Distribution
 
+The chi-square statistic is used to evaluate the departure from the null expectation, often used with count data in defined categories.  For example, the number of males versus females that received a job promotion or not, to test if there is a significant difference from what we would expect or if there is an effect of gender.  The statistic is calculate by taking the difference of the observed and the expected value and dividing by the square root of the expected value, all squared.  This is often referred to as a goodness-of-fit test, because the calculation of the chi-square statistic itself standardizes the statistic so it can be compared to a reference distribution.  Importantly, the chi-square distribution is the distribution of the test statistic following repeated sampling from the null distribution.  Thus, if the chi-square statistic closely fits the chi-square distribution (i.e., closely fits the null expectation), we would expect the value of the statistic to be low; conversely, a high value indicates the statistic does not closely following the null expectation.  
 
+## F-Distribution
 
+The overall motivation to use the F-distribution is to compare observations to expectation under a null model, except that we're dealing with continuous variables, not discrete counts as with the chi-square distribution.  In the analysis of variance framework, we want to know if the difference in means between two groups, for example, is greater than is expected under the null model (i.e., if there was no difference in means).  We essentially measure the difference in means between groups relative to the variability within groups.  
+
+## Poisson Distribution
+
+The Poisson distribution is the frequency distribution of a number events sampled per unit of time or space.  For example, the number visits to a webpage in a 5-second period could be modelled with the Poisson distribution.  The Poisson distribution is controlled by the parameter lambda, which is the mean number of events that occur in a particular time frame or space, as well as the variance (these values are the same).  We can model a random Poisson distribution using the `rpois()` function, which takes two arguments: the number of random numbers to draw as the first argument; and lambda, which controls the mean number of events occurring per unit of time or space, as well as the variance.
+
+```{r poisson-distribution-plot}
+# Create a random Poisson distribution and plot the output
+data.frame(poisson = rpois(n = 100, lambda = 10)) %>% 
+  ggplot(aes(poisson)) +
+  geom_density(fill = "lightskyblue", 
+               alpha = 0.75) +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+  labs(x = "Variables", 
+       y = "Density", 
+       title = "Frequency distribution of 100 random variables drawn from a Poisson distribution", 
+       subtitle = "Mean and variance (lambda) are equal to 10")
+  
+
+```
+
+## Exponential Distribution
+
+The exponential distribution is used to model the time between events, also using the parameter lambda that controls the mean number of events per unit time or space as well as the variance in the Poisson distribution.  We can plot the frequency of random numbers drawn from the exponential distribution using the `rexp()` function, which takes two parameters: `n`, or the number of random numbers to draw; and `rate`, which controls the number of events per unit of time. One important assumption to consider is that in both the Poisson and the exponential distributions, the lambda parameter is considered to be constant.
+
+## Weibull Distribution
+
+This is similar to the exponential distribution to model the time between events using the parameter lambda, but importantly, in situations where the rate between events may change.  The dynamic nature of the lambda parameter is controlled by the shape parameter, $\beta$, where $\beta > 1$ indicates that the probability of an event increases over time.  The Weibull distribution is often used to model the time-to-failure, where in many cases, the probability of failure (e.g., mechanical failure analysis often used in engineering) increases over time.  
 
