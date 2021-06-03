@@ -1,9 +1,11 @@
 ---
-title: "Chapter 2: Data and Sampling Distributions"
+title: 'Chapter 2: Data and Sampling Distributions'
 output:
+  pdf_document:
+    toc: yes
   html_notebook:
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
     theme: cerulean
     highlight: tango
 ---
@@ -27,8 +29,6 @@ my_theme <- theme(
 )
 
 ```
-
-
 
 ## Introduction
 
