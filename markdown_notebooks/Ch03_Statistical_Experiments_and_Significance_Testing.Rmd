@@ -159,3 +159,64 @@ data.frame(permuted_mean_diffs = perm_diffs) %>%
 
 There are 141 mean differences from the permutation data that are as extreme or more extreme than the difference calculated from the empirical data, or about 14%.  This is the p-value, which indicates that the result is not statistically significant.  The permutation test is relatively straightforward and doesn't rely on assumptions of normality, and is thus widely applicable to a variety of datasets.  
 
+## Statistical Significance and p-Values
+
+When conducting hypothesis tests, we want to know the probability that we would obtain the estimate of a particular statistic, if the null hypothesis were true (i.e., no difference between groups).  This, in essence, is the p-value, and it gives us an indication about the unusualness of a particular result, or the chances of observing that particular result by chance if the null hypothesis were true.  We can reuse the permutation function from the section above and apply it to the new example dataset looking at the number of conversions from a table of ecommerce data.  
+
+```{r e-commerce-permutation}
+# Generate a vector of the observed percentage of differences between B and A
+obs_pct_diff <- 100 * (200 / 23539 - 182 / 22588) # 0.04391621
+
+# Create a vector to store the permutation indexes
+# We'll need the total number of non-conversions (45945) and the total number of successful conversions (200 + 182 = 382)
+conversion <- c(rep(0, 45945), rep(1, 382))
+
+# Create a vector to store the permutation results
+perm_diffs <- rep(0, 1000) # store 1,000 0's....
+
+# Run the function 1,000 times
+for (i in 1:1000) {
+  perm_diffs[i] <- 100 * perm_function(conversion, 23739, 22588)
+}
+
+# Visualize the null distribution 
+data.frame(perm_diffs = perm_diffs) %>% 
+  ggplot(aes(perm_diffs)) +
+  geom_density(fill = "lightskyblue", 
+               alpha = 0.6) +
+  geom_vline(xintercept = obs_pct_diff, 
+             linetype = "dashed") +
+  my_theme + 
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.02))) +
+  labs(x = "Permuted conversion rate (%)", 
+       y = "Density",
+       title = "Null distribution of conversion rate (%) between webpages B and A", 
+       subtitle = "The observed difference is denoted as a dashed line")
+```
+
+Looking at the plot above, it appears to be in the range that's plausible just by chance alone.  We can formalize this conclusion by calculating the p-value.  We'll take the number of observations from the null distribution that are as extreme or more extreme than the one we've observed and divide by the total number of observations in the null distribution (1,000).
+
+```{r calculate-p-value}
+# Calculate the p-value by hand
+data.frame(perm_diffs) %>% 
+  filter(perm_diffs >= obs_pct_diff) %>% 
+  nrow() / 1000
+```
+
+The p-value is 0.298, meaning we would expect to see a conversion rate as extreme or more extreme than the one we observed about 30% of the time, if the null hypothesis was true.  Since the data are binary (conversion or no conversion), we can also perform a test for equal proportions under the binomial distribution using the `prop.test()` function.
+
+```{r prop-test}
+# Perform a test of equal proportions 
+prop.test(x = c(200, 182), 
+          n = c(23539, 22406), 
+          alternative = "greater")
+
+```
+
+From this output we can see the proportion of successes (i.e., conversions, defined in the `x` argument) for each group, as well as the point estimate and 95% confidence interval for the chi-squared test statistic.  The p-value for this test is similar to that obtained from the permutation test and doesn't change the overall interpretation of the results.  
+
+There are two errors commonly discussed in hypothesis testing: Type I errors, or false-positives, in which the researcher rejects the null hypothesis when the null hypothesis is true; and Type II errors, or false negatives, in which the researcher fails to reject the null hypothesis when the null hypothesis is false.  
+
+## t-Tests
+
