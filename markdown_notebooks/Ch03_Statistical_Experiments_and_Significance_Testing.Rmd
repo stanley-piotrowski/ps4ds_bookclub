@@ -8,6 +8,27 @@ output:
     highlight: tango
 ---
 
+```{r setup, warning = FALSE, message = FALSE}
+# Load libraries
+library(tidyverse)
+library(kableExtra)
+library(ggtext)
+library(RColorBrewer)
+library(modelr)
+
+# Set ggplot2 theme
+my_theme <- theme(
+  panel.background = element_rect(fill = "white", color = "black"), 
+  panel.grid = element_blank(),
+  plot.title = element_markdown(),
+  plot.subtitle = element_markdown(),
+  plot.caption = element_markdown()
+)
+
+```
+
+
+
 ## Introduction 
 
 The basic workflow in any statistical analysis is to first formulate a hypothesis, design an experiment to test the hypothesis, collect data, analyze the data, and make conclusions and inferences inferences to the larger population that the sample was drawn from.
@@ -15,3 +36,126 @@ The basic workflow in any statistical analysis is to first formulate a hypothesi
 ## A/B Testing
 
 A/B testing involves the randomized allocation of subjects to treatment groups (those subjects that receive the treatment) and control groups (those subjects that don't receive the treatment) and evaluating a test statistic to measure the effects of the treatment.  For example, physicians may be interested in the effectiveness of a drug in treating a disease relative to a placebo, so subjects may be randomly assigned into treatment and control (i.e., placebo) groups to evaluate the drug's effectiveness. In this particular case of a clinical trial, blind or double-blind study designs may be used.  In a blind study design, the subjects are unaware if they were randomly assigned into the treatment or the control group; in a double-blind study design, both the subjects AND those administering the treatment are unaware which group the subjects have been placed in.  In data science, the A/B tests are typically motivated by business interests: evaluating which web page style gets more views; which site headline gets more clicks; or which product price gets more purchases.  Importantly, the researcher must establish the test statistic to measure the effect of the treatment prior to the experiment.
+
+## Hypothesis Tests
+
+Hypothesis tests are critical to evaluate the differences between true effects due to a treatment or similar, or natural random variation.  The idea behind random assignment in A/B tests is that any differences observed between treatment groups can be due to only two things: a) the random change in assignments of subjects to either the experimental or control group; or b) a true effect due to the treatment.  The hypothesis test relies on two hypotheses: the null hypothesis, which assumes that both groups are equal, and that any variation is due to chance; and the alternative hypothesis, which states that both groups are not equal, and that any variation cannot be reasonably attributed to chance alone.  One way in which the null hypothesis is framed is by creating a null distribution, by conducting a permutation test to shuffle subjects between two groups such that the permuted group sizes are the same as the original group sizes.  This is repeated a defined number of times, creating a distribution where there are no differences between groups.  This distribution can then be compared to the empirical data.  
+
+Hypothesis tests can be one-tailed, or two-tailed, depending on the research question.  One-tailed tests only consider a single alternative, while two-tailed tests consider two alternatives.  For example, a typical one-tailed test in data science may involve comparing the current web page headline to a new, flashier web page headline.  In this situation, we may only be interested in whether or not the new web page design attracts more viewers, and if it doesn't, we'll just stick with the current design.  In a different situation, maybe we're starting from scratch and want to know which web page headline background color attacts more viewers: blue, or orange.  In this case, the orange background could attract more viewers, or it could attract less. 
+
+## Resampling
+
+In hypothesis testing, there are two forms of resampling, or redrawing samples from the observed data: bootstrapping, or resampling with replacement, typically to evaluate the variability in an estimate; and permutation, typically involving two or more groups, where observations may be randomly shuffled between groups to generate a null distribution (i.e., a null hypothesis of no difference between groups).  One of the key differences is in permutation testing, there is more than one group being compared, and we're going to be resampling _without_ replacement, because we're shuffling observations between groups to simulate the null hypothesis of no differences between groups.  Another key theme with the permutation test is that the original sample sizez will be maintained in each permutation.  For example, if you want to compare the group means between groups A and B, and there are 50 observations in group A and 48 observations in group B, there will be 50 and 48 observations in the permuted groups A and B, respectively, in each iteration.  With each iteration, the original estimate of the statistic will be recorded to generate a null distribution to compare to the observed value from the original, non-permuted data.  In essence, if the estimate calculated from the empirical distribution is within the null distribution created from the permutations, we may conclude that the estimate could be obtained simply by chance.  However, if the estimate is extreme and lies in one of the tails of the distribution, we may conclude that the chances that the estimate was obtained by chance are rare.  
+
+To look at an example of the permutation test in action, we'll look at the `web_page_data.csv` file, which contains Google Analytics data on the amount of time users spent on a particular experimental web page.  The idea is to identify which web design users spent the most time on to drive business decisions for the hypothetical company.  
+
+```{r google-analytics-sessions-plot}
+# Load the four sessiosn data and convert the minutes to seconds
+session_times <- read_csv("../data/web_page_data.csv") %>% 
+  mutate(Time = Time * 100)
+
+# Create boxplot of the page sessions 
+session_times %>% 
+  ggplot(aes(Page, Time)) +
+  geom_boxplot() +
+  my_theme +
+  labs(y = "Time (seconds)", 
+       title = "Time spent on different web pages",
+       subtitle = "Data are from Google Analytics")
+```
+
+From this plot, we can see that Page B has the highest median time.  We can also plot the distribution of time spent on each webpage as a density plot and label the mean time spent as a vertical dashed line to visualize differences in means.
+
+```{r google-analytics-sessions-density}
+# Plot the distribution of times spent on each webpage and label the means for each page
+session_times %>%
+  ggplot(aes(Time)) +
+  geom_density(aes(fill = Page), 
+               alpha = 0.6) +
+  geom_vline(data = filter(session_times, Page == "Page A"), aes(xintercept = mean(Time)), linetype = "dashed") +
+  geom_vline(data = filter(session_times, Page == "Page B"), aes(xintercept = mean(Time)), linetype = "dashed") +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  facet_grid(Page ~ .) +
+  theme(
+    legend.position = "none"
+  ) +
+  labs(x = "Time (seconds)", 
+       y = "Density", 
+       title = "Distribution of times spent on each webpage from Google Analytics data", 
+       subtitle = "The mean time spent on each webpage is represented as a dashed line")
+
+```
+
+From this faceted plot, we can see users spent the least amount of time on Page A and the greatest amount of time on Page B.  Let's create a separate data frame to show a table of the mean time spent on each page. 
+
+```{r session-times-table}
+# Create a new data frame with just the mean times for each page
+mean_session_times <- session_times %>% 
+  group_by(Page) %>% 
+  summarise(mean_times = mean(Time), 
+            n = n())
+  
+# Display a table of all the mean times per page
+mean_session_times %>% 
+  kbl(col.names = c("Page", "Mean time", "n"), 
+      caption = "Mean time spent on each webpage (data from Google Analytics)") %>% 
+  kable_classic_2() %>% 
+  kable_styling(full_width = FALSE, 
+                "striped")
+
+```
+
+Looking at Page A and Page B, we can see that the difference in mean times spent on the different webpages is about 36 seconds.  Ultimately, we want to know if this difference can be attributed to differences in the webpages, or just random chance.  To do this, we'll create a permutation function (derived from the the same function in the textbook) that will take three arguments: `x`, the data frame to use; `n_A`, the number of samples in group A (e.g., Page 1); and `n_B`, the number of samples in group B.  We'll then create indexes to use in the permutation by randomly sampling numbers from 1 to the `n` (the total number of samples in the dataset) of the size of group B.  After that, we'll get the difference and assign those indexes to group A.  Then, we'll subset each group by randomly shuffling the indexes and calculate the mean for each group.  
+
+```{r permutation-function}
+# Create the permutation function
+perm_function <- function(x, n_A, n_B) {
+  n <- n_A + n_B
+  index_B <- sample(1:n, n_B)
+  index_A <- setdiff(1:n, index_B)
+  mean_diff <- mean(x[index_B]) - mean(x[index_A])
+  return(mean_diff)
+}
+
+```
+
+After we've created the function, we'll perform 10,000 iterations to generate a null distribution of the data.
+
+```{r permutation-reps}
+# Create an empty data frame
+perm_diffs <- rep(0, 1000)
+
+# For loop to run the function 10,000 times
+for (i in 1:1000) {
+  perm_diffs[i] <- perm_function(session_times$Time, 21, 15)
+}
+
+# Plot the distribution and our empirical difference in means as a dashed line 
+data.frame(permuted_mean_diff = perm_diffs) %>% 
+  ggplot(aes(permuted_mean_diff)) +
+  geom_density(fill = "lightskyblue", 
+               alpha = 0.6) +
+  geom_vline(xintercept = 36, 
+            linetype = "dashed") +
+  my_theme +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+  labs(x = "Mean time difference (seconds)", 
+       y = "Density", 
+       title = "Distribution of mean time difference (seconds) from permutation test", 
+       subtitle = "Mean difference from empirical data is represented as a dashed line")
+```
+
+We can now look at the percentage of the mean differences calculated from the permuted data that are as extreme or more extreme than what we observed from the empirical data.
+
+```{r percentage-extreme}
+# Calculate the percentage of as extreme or more extreme mean differences
+data.frame(permuted_mean_diffs = perm_diffs) %>% 
+  filter(permuted_mean_diffs >= 36) %>% 
+  nrow()
+```
+
+There are 141 mean differences from the permutation data that are as extreme or more extreme than the difference calculated from the empirical data, or about 14%.  This is the p-value, which indicates that the result is not statistically significant.  The permutation test is relatively straightforward and doesn't rely on assumptions of normality, and is thus widely applicable to a variety of datasets.  
+
