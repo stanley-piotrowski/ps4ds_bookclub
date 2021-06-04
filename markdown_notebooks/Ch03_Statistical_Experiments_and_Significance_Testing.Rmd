@@ -220,3 +220,20 @@ There are two errors commonly discussed in hypothesis testing: Type I errors, or
 
 ## t-Tests
 
+The t-test is commonly used in hypothesis testing to evaluate the difference between means of two groups, by comparing the test statistic to a t-distribution.  We can implement this with the webpage data using the `t.test()` function.
+
+```{r t-test}
+# Perform a t-test with the webpage data
+t.test(Time ~ Page, data = session_times, 
+       alternative = "less")
+
+```
+
+From this output, we can see the mean time spent on the different webpages, and a p-value when we are testing the alternative hypothesis that the mean time spent on Page A is less than the time spent on Page B.  
+
+## Multiple Testing
+
+The problem of multiple testing can be explained through a simple formula: take the probability that one test will correctly test non-significant, which is 1 minus the alpha level (e.g., 1 - 0.05 = 0.95); multiply this probability for all tests (e.g., if there are three tests: 0.95 x 0.95 x 0.95); subtract this cumulative probability from 1 to obtained the probability that at least one test will be significant by chance, thus committing a Type I error (i.e., a false positive).  This is known as alpha inflation, which describes the concept that as you increase the number of significance tests, the probability of making a Type I error increases.  Thus, multiple testing corrections need to be employed in an attempt to control this inflation.  This is also a problem when trying to fit statistical models but can be overcome by having two separate datasets: a training set used to train the model, and a validation set composed of data the model has not seen before to evaluate the predictive ability of the model.  
+
+## False Discovery Rate
+
