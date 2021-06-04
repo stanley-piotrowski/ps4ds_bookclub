@@ -1,0 +1,17 @@
+---
+title: "Chapter 3: Statistical Experiments and Significance Testing"
+output:
+  html_notebook:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: tango
+---
+
+## Introduction 
+
+The basic workflow in any statistical analysis is to first formulate a hypothesis, design an experiment to test the hypothesis, collect data, analyze the data, and make conclusions and inferences inferences to the larger population that the sample was drawn from.
+
+## A/B Testing
+
+A/B testing involves the randomized allocation of subjects to treatment groups (those subjects that receive the treatment) and control groups (those subjects that don't receive the treatment) and evaluating a test statistic to measure the effects of the treatment.  For example, physicians may be interested in the effectiveness of a drug in treating a disease relative to a placebo, so subjects may be randomly assigned into treatment and control (i.e., placebo) groups to evaluate the drug's effectiveness. In this particular case of a clinical trial, blind or double-blind study designs may be used.  In a blind study design, the subjects are unaware if they were randomly assigned into the treatment or the control group; in a double-blind study design, both the subjects AND those administering the treatment are unaware which group the subjects have been placed in.  In data science, the A/B tests are typically motivated by business interests: evaluating which web page style gets more views; which site headline gets more clicks; or which product price gets more purchases.  Importantly, the researcher must establish the test statistic to measure the effect of the treatment prior to the experiment.
