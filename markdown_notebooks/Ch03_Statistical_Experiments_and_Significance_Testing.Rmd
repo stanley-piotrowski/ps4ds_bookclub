@@ -237,3 +237,12 @@ The problem of multiple testing can be explained through a simple formula: take 
 
 ## False Discovery Rate
 
+Broadly, the false discovery rate (FDR) is described as the rate at which hypothesis tests found to be significant are actually false.  For example, if the FDR level was 0.05, that means that in 100 tests identified to be statistically significant, we would ensure that no more than 5 of those tests would be false positives (i.e., Type I error rate).  
+
+## Degrees of Freedom
+
+The degrees of freedom are just the number of values that are free to vary in a sample dataset and influence the shape of a probability distribution.  For example, using the excellent example from the textbook, if you are calculating the mean with 10 integers, there are 9 degrees of freedom.  The idea is that once you know 9 of the values, you can calculate the 10th, and it's not free to vary.  Many estimators will use a bias correction factor, typically $n-1$ in the denominator, because normally, since we are using a sample of the data, the estimates would be biased.  
+
+## ANOVA
+
+The analysis of variance (ANOVA) takes more than two groups and tests if the differences in means are due to chance.  For this section, we'll use the `four_sessions.csv` data, which contains the time (in seconds) spent on each of four different webpages.  
