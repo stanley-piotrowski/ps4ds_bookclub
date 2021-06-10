@@ -15,6 +15,7 @@ library(kableExtra)
 library(ggtext)
 library(RColorBrewer)
 library(modelr)
+library(lmPerm)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -246,3 +247,41 @@ The degrees of freedom are just the number of values that are free to vary in a 
 ## ANOVA
 
 The analysis of variance (ANOVA) takes more than two groups and tests if the differences in means are due to chance.  For this section, we'll use the `four_sessions.csv` data, which contains the time (in seconds) spent on each of four different webpages.  
+
+```{r four-sessions-plot}
+# Load the four sessions data
+four_sessions <- read_csv("../data/four_sessions.csv")
+
+# Create the boxplot
+four_sessions %>% 
+  ggplot(aes(Page, Time)) +
+  geom_boxplot() +
+  my_theme +
+  labs(title = "Time (seconds) spent on each webage")
+```
+
+The basic strategy to test if the group means are the same is use a permutation approach, combining all the data into a single group, then re-sampling into four groups, finding the mean of those new groups, and repeating this process a defined number of times.  To perform this permutation test, we'll use the `aovp()` function from the `lmPerm` package.
+
+```{r lmPerm-aov}
+# Perform the ANOVA permutation tests
+aov_permutation <- aovp(Time ~ Page, data = four_sessions)
+
+# Get the summary of this object
+summary(aov_permutation)
+```
+
+These results indicate that we could expect to see the observed differences in the mean time spent on each webpage by chance alone about 8.6% of the time.  Because our p-value is greater than the standard 0.05, we can conclude that any differences we observed are just due to chance.  
+
+## F-Statistic
+
+The F-statistic is used in the `aov()` function to compare means between multiple groups by finding the ratio of the variance across the group means and the variance of the residual error.  In other words, the F-statistic compares the variance between groups to the variance within groups.  The F-statistic is calculated by taking the mean squares of the treatment (i.e., the group means) and dividing by the mean squares of the error (i.e., the residuals).  The resulting statistic is compared to an F-distribution to determine the statistical significance.
+
+```{r standard-aov-ftest}
+# Use the standard aov() function 
+aov_test <- aov(Time ~ Page, data = four_sessions)
+
+# Print the summary
+summary(aov_test)
+```
+
+The output gives several useful metrics that describe how well the data fit the linear regression model.  For the `Page` variable, the `Sum Sq` field in the output above gives the sums of squares from the regression model, or the difference between each page mean and the grand mean (i.e., the mean calculated from all observations combined).  The sums of squares of the residuals is the squared difference between each observation and the `Page` mean.  
