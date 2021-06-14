@@ -28,8 +28,6 @@ my_theme <- theme(
 
 ```
 
-
-
 ## Introduction 
 
 The basic workflow in any statistical analysis is to first formulate a hypothesis, design an experiment to test the hypothesis, collect data, analyze the data, and make conclusions and inferences inferences to the larger population that the sample was drawn from.
@@ -42,7 +40,7 @@ A/B testing involves the randomized allocation of subjects to treatment groups (
 
 Hypothesis tests are critical to evaluate the differences between true effects due to a treatment or similar, or natural random variation.  The idea behind random assignment in A/B tests is that any differences observed between treatment groups can be due to only two things: a) the random change in assignments of subjects to either the experimental or control group; or b) a true effect due to the treatment.  The hypothesis test relies on two hypotheses: the null hypothesis, which assumes that both groups are equal, and that any variation is due to chance; and the alternative hypothesis, which states that both groups are not equal, and that any variation cannot be reasonably attributed to chance alone.  One way in which the null hypothesis is framed is by creating a null distribution, by conducting a permutation test to shuffle subjects between two groups such that the permuted group sizes are the same as the original group sizes.  This is repeated a defined number of times, creating a distribution where there are no differences between groups.  This distribution can then be compared to the empirical data.  
 
-Hypothesis tests can be one-tailed, or two-tailed, depending on the research question.  One-tailed tests only consider a single alternative, while two-tailed tests consider two alternatives.  For example, a typical one-tailed test in data science may involve comparing the current web page headline to a new, flashier web page headline.  In this situation, we may only be interested in whether or not the new web page design attracts more viewers, and if it doesn't, we'll just stick with the current design.  In a different situation, maybe we're starting from scratch and want to know which web page headline background color attacts more viewers: blue, or orange.  In this case, the orange background could attract more viewers, or it could attract less. 
+Hypothesis tests can be one-tailed, or two-tailed, depending on the research question.  One-tailed tests only consider a single alternative, while two-tailed tests consider two alternatives.  For example, a typical one-tailed test in data science may involve comparing the current web page headline to a new, flashier web page headline.  In this situation, we may only be interested in whether or not the new web page design attracts more viewers, and if it doesn't, we'll just stick with the current design.  In a different situation, maybe we're starting from scratch and want to know which web page headline background color attracts more viewers: blue, or orange.  In this case, the orange background could attract more viewers, or it could attract less. 
 
 ## Resampling
 
@@ -284,4 +282,8 @@ aov_test <- aov(Time ~ Page, data = four_sessions)
 summary(aov_test)
 ```
 
-The output gives several useful metrics that describe how well the data fit the linear regression model.  For the `Page` variable, the `Sum Sq` field in the output above gives the sums of squares from the regression model, or the difference between each page mean and the grand mean (i.e., the mean calculated from all observations combined).  The sums of squares of the residuals is the squared difference between each observation and the `Page` mean.  
+The output gives several useful metrics that describe how well the data fit the linear regression model.  For the `Page` variable, the `Sum Sq` field in the output above gives the sums of squares from the regression model, or the difference between each page mean and the grand mean (i.e., the mean calculated from all observations combined).  The sums of squares of the residuals is the squared difference between each observation and the `Page` mean.  The F-statistic is constructed from the mean square of the treatment (i.e., `Page`) divided by the mean square of the residuals.
+
+## Decomposition of Variance
+
+The total variance can be broken down into several components: the grand average
