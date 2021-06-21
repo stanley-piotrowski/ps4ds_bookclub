@@ -16,6 +16,7 @@ library(ggtext)
 library(RColorBrewer)
 library(modelr)
 library(lmPerm)
+library(pwr)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -284,6 +285,152 @@ summary(aov_test)
 
 The output gives several useful metrics that describe how well the data fit the linear regression model.  For the `Page` variable, the `Sum Sq` field in the output above gives the sums of squares from the regression model, or the difference between each page mean and the grand mean (i.e., the mean calculated from all observations combined).  The sums of squares of the residuals is the squared difference between each observation and the `Page` mean.  The F-statistic is constructed from the mean square of the treatment (i.e., `Page`) divided by the mean square of the residuals.
 
-## Decomposition of Variance
+## Chi-Square Test
 
-The total variance can be broken down into several components: the grand average
+The chi-square test is used to evaluate observed count data and how it compares to an expected distribution.  Specifically, we are dealing with contingency tables and assessing if it is reasonable to conclude independence among variables (e.g., some treatment effect and outcome).  If we have an R x C contingency table, we can generate a null hypothesis to compare to our empirical data to evaluate if it's reasonable to conclude that the variables are independent.  For example, let's look at the `click_rates` data, which shows the number of clicks versus no-clicks with three different headlines.  
+
+```{r click-rates-data-eda}
+# Import click rates data
+click_rates <- read_csv("../data/click_rates.csv")
+
+# Print a table of the data
+click_rates %>% 
+  pivot_wider(names_from = "Headline", 
+              values_from = "Rate") %>% 
+  kbl(caption = "Click rates for three different advertising headlines") %>% 
+  kable_styling(full_width = FALSE) %>% 
+  kable_classic_2()
+```
+
+Next, we want to form our null hypothesis, or the expected value, which in this case, would be that the number of clicks versus no-clicks (i.e., the click rate) is the same for each headline.  To do this, we want to calculate the sum of all of the clicks (14 + 8 + 12 = 34), calculate the sum of all of the no-clicks plus the total number of clicks (986 + 992 + 988 = 2,966 + 34 = 3,000), then calculate the overall click rate (34 / 3,000 = 0.01133).  So, for each headline then, we're looking at 11.33 clicks and 988.67 no-clicks (i.e., 1,000 - 11.33 = 988.67).  This is our expected distribution, or the expected number of clicks versus no-clicks for each headline.
+
+The next thing we want to do is calculate the Pearson's residual, or the difference between the observed value and the expected value divided by the square root of the expected value, for each cell, or each click versus no-click observation.  We can accomplish this with a simple `case_when()` statement inside of a `mutate()` call, as I've done below.  The numbers are slightly different than those presented in the textbook, likely because of slight differences in how the authors calculated their residuals.   
+
+```{r click-data-residuals}
+# Calculate click data residuals
+click_rates_residuals <- click_rates %>% 
+  mutate(Expected_Rate = 
+           case_when(Click == "Click" ~ as.numeric(11.67), 
+                     TRUE ~ as.numeric(988.67)),
+         Residual = (Rate - Expected_Rate) / sqrt(Expected_Rate), 
+         Residual = round(Residual, digits = 3))
+
+# Print the summary table with the residuals
+click_rates_residuals %>% 
+  select(Headline, Click, Residual) %>% 
+  pivot_wider(names_from = "Headline", 
+               values_from = "Residual") %>% 
+  kbl(caption = "Pearson residuals for each headline") %>% 
+  kable_styling(full_width = FALSE) %>% 
+  kable_classic_2()
+
+```
+
+The chi-squared test statistic is constructed by summing the squared Pearson residuals.  We can square all of the Pearson residuals and add them to calculate the chi-squared statistic below.
+
+```{r calculate-chi-squared}
+# Calculate chi-squared statistic by squaring all of the Pearson residuals, then summing the squared values
+click_rates_residuals %>% 
+  mutate(Squared_residual = Residual^2) %>% 
+  summarise(Chi_sq = sum(Squared_residual))
+```
+To evaluate how likely it is to see a chi-squared test statistic estimate of 1.65 with data that were collected in another sample, we would perform a permutation test.  We would hold the marginal totals constant- in other words, the number of clicks and no-clicks would be constant (34 and 2,966, respectively), then take three samples each of 1,000 observations and count the number of clicks.  We'd compute the chi-squared statistic for the new permuted data, perform the permutation 1,000 times, then compare the original estimate (1.65) to the distribution of the chi-squared statistic from the permuted data to calculate a p-value.  We can accomplish all of this using the `chisq.test()` function and set the argument `simulate.p.value` to `TRUE`.  The first step is to transform the `click_rates` data frame into a matrix, setting the number of rows to 2, the number of columns to 3, and setting `byrow = TRUE`.  Finally, we can set the argument `B` (the number of replicates used) to 10,000.
+
+```{r simulate-p-value-chisq}
+# Use the chisq.test() function to calculate the chi-squared statistic and calculate the p-value
+matrix(click_rates$Rate, 
+       nrow = 3, 
+       ncol = 2, 
+       byrow = TRUE) %>% 
+  chisq.test(simulate.p.value = TRUE, 
+             B = 10000)
+
+```
+Based on the results above, we would conclude that the variation observed between headlines could reasonably be due to chance (p-value ~ 0.48).  
+
+## Fisher's Exact Test
+
+In cases where cell counts are less than 5, the assumption that the test statistic approximates the chi-squared distribution breaks down.  In these cases, it is preferred to use Fisher's Exact Test, which calculates all of the possible permutations, holding the row and column totals constant, in order to evaluate how extreme the empirical result is given all of the other possible combinations that could have been drawn from the same underlying data.  This can be calculated using the `fisher.text()` function.
+
+```{r fishers-test}
+# Perform Fisher's exact test on the same data
+matrix(click_rates$Rate, 
+       nrow = 3, 
+       ncol = 2,
+       byrow = TRUE) %>% 
+  fisher.test()
+```
+
+This exact p-value, calculated by constructing all of the possible permutations, calculating the chi-squared statistic, and then comparing the number of estimates that were as extreme or more extreme than the one calculated from the empirical data, shows that the variation observed can reasonably be due to chance.  We can see another application using the `imanishi_data` containing a frequency table of the interior digits (ignoring the first and last digit of a number) in laboratory data.  The case rested under the assumption that under a uniform distribution, each digit would occur 31.5 times (315 total observations / 10 numbers = 31.5).  The empirical data are plotted below side-by-side with the null distribution.
+
+```{r lab-data-eda}
+# Import the imanishi data
+lab_data <- read_csv("../data/imanishi_data.csv")
+
+# Add a separate column for the expected counts for each digit
+lab_data %>%
+  mutate(Expected = 31.5) %>% 
+  pivot_longer(cols = c(Frequency, Expected), 
+               names_to = "Distribution", 
+               values_to = "Count") %>% 
+  mutate(Digit = as.factor(Digit)) %>% 
+  ggplot(aes(Digit, Count, fill = Distribution)) +
+  geom_bar(stat = "identity", 
+           position = "dodge") +
+  my_theme +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01)))
+  
+```
+
+From the bar plot above, we can see that the empirical distribution is quite different from the expected distribution, assuming all of the interior digits were drawn from a uniform random distribution.  Let's test this using a chi-squared test and performing 10,000 replicate resamplings.
+
+```{r lab-data-chisq-test}
+# Add a column of the expected counts for each interior digit and convert to a matrix
+lab_data %>% 
+  chisq.test(.$Frequency, 
+             simulate.p.value = TRUE, 
+             B = 10000)
+  
+```
+
+In summary, chi-squared and Fisher's exact tests are used in data science to test if variables are independent (e.g., clicks based on a certain webpage layout). 
+
+## Multi-Arm Bandit Algorithm
+
+Multi-arm bandit algorithms are similar to A/B testing, but instead of setting a pre-defined threshold at which you'll stop the experiment, evaluate the results, and then immediately implement those results (e.g., change a webpage based on the results of the A/B test), the multi-arm bandit approach favors outcomes that begin to do better over time.  For example, if there are three webpage layouts being compared as in previous examples, and A appears to be "outperforming" B and C (i.e., getting more clicks), then the multi-arm bandit algorithm will start to feed users more of the A webpage, but not ignore B and C in case they start to get more clicks.  This approach is often used in web testing because it can allow the user to reach the overall conclusion more quickly than traditional A/B tests, and this approach utilizes information from previous experiments by changing the probability of which webpage is shown (in this example).  
+
+One example of the algorithm is the epsilon-greedy algorithm, which is controlled by a single parameter, epsilon.  The pre-defined value of epsilon controls the behavior of the algorithm and in the context of webpage testing, which webpage a user is presented with (e.g., A or B).  Put simply, if a randomly drawn number is between 0 and epsilon, a coin is shown a if the user flipped heads, they are presented with A and if tails, they're presented with B.  If, however, the randomly drawn number is greater than epsilon, the algorithm shows the user the webpage with the highest number of clicks at that stage.  In this way, we can see that if one webpage has a higher response rate than the other, it's chosen preferentially to present to the user.  
+
+## Statistical Power
+
+A key consideration when designing experiments is defining the length of the experiment.  The central goal is to detect an effect, if one is present, but whether or not the effect has a dramatic effect on two groups will dictate how much data need to be acquired to detect that effect.  This is the statistical power, or the probability of detecting an effect size (minimum size of the effect the experiment aims to detect) given the sample size and variability within the sample.  In the example in the textbook, if we wanted to detect the difference between two types of baseball hitters in 25 at-bats, and we know that in 25 at-bats, the probability of seeing a difference is 0.75, the effect size is the difference between the baseball hitters, and the power is 75%. 
+
+## Sample Size
+
+In some cases when evaluating the appropriate sample size to use for a given hypothesis test, you'll need to define the effect size ahead of time.  In the example from the textbook, perhaps we are interested in running a new ad, but want to know if it's better than the one currently being used.  Further, we'll only switch over to the new ad if it generates 10% more responses than the ad currently being used.  The 10% is the effect size.  
+
+Following the example from the book, we can calculate the sample size necessary in a webpage experiment.  We are interested in comparing two different ads, one ad that is already in production that has an average click-rate of 1.1%.  We want that click-rate to increase to 1.21% (i.e., a 10% increase), or else we'll keep the same ad, but we don't know how long to run the experiment for (i.e., how many times to show users ads) in order to detect the effect size.  We'll use the function `pwr.2p.test()` to calculate the sample size given the effect size and desired level of statistical power.  In the example from the book, we're striving for 80% power, or the ability to reject the null hypothesis 80% of the time.
+
+```{r calculate-sample-size}
+# Define the effect size (10%)
+effect_size <- ES.h(p1 = 0.0121, 
+                    p2 = 0.011)
+
+# Calculate the sample size
+pwr.2p.test(h = effect_size, 
+            sig.level = 0.05, 
+            power = 0.8, 
+            alternative = "greater")
+```
+Let's change this slightly and see if we were interested in a higher statistical power (95%).
+
+```{r calculate-alt-sample-size}
+# Calculate sample size with greater power
+pwr.2p.test(h = effect_size, 
+            sig.level = 0.05, 
+            power = 0.95, 
+            alternative = "greater")
+
+```
+
+We can see that if we are striving for 80% power to detect an effect, we'll need around 116,000 samples; if we want to strive for higher statisticl power at 95%, we'll need almost 20,500 samples.  
