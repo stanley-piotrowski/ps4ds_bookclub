@@ -1,0 +1,87 @@
+---
+title: "Chapter 4: Regression and Prediction"
+output:
+  html_notebook:
+    toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: tango
+---
+
+```{r setup, warning = FALSE, message = FALSE}
+# Load libraries
+library(tidyverse)
+library(forcats)
+library(ggtext)
+library(ggrepel)
+library(scales)
+library(janitor)
+library(kableExtra)
+library(broom)
+
+# Set ggplot2 theme
+my_theme <- theme(
+  panel.background = element_rect(color = "black", fill = "white"), 
+  panel.grid = element_blank(),
+  plot.title = element_markdown(),
+  plot.subtitle = element_markdown(),
+  plot.caption = element_markdown(face = "italic")
+)
+
+```
+
+
+# Introduction
+
+This chapter focuses on prediction using regression, or identifying the quantitative relationship between a number of predictor variables and a response.  This is a form of supervised learning, in which we are training a statistical model with known outcomes in order to generalize to unknown, or unseen data, within the bounds of the predictor variables in the training data set.  We will also explore the subfield of anomaly detection using the relationship between the predictors and responses to identify responses that are extreme or unusual (e.g., outside the range of values that would be expected 95% of the time). 
+
+## Simple Linear Regression
+
+Notes:
+
+* Regression is similar to correlation in that we're quantifying the relationship between one or more predictor variables and a response variable; the difference is that correlation measures the strength of the relationship (e.g., 0.99 correlation), while regression gives us the nature of the relationship (e.g., for every one unit increase in X, Y increases by 2.5 units).
+
+* Importantly, the y-intercept is the value of the resonse variable when X = 0; in other words, this is the "default" or average baseline response (e.g., when X = 0, the y-intercept may be $150,000 for home prices in Seattle, meaning that without considering square footage or anything else, that's the "base price" to build off of). 
+
+* The plot below shows the relationship between peak expiratory flow rate and exposure to cotton dust from the `LungDisease.csv` dataset (more information about the hazards of lung disease and obstructive dust from handling and processing cotton can be found on the [CDC website](https://www.labor.nc.gov/cotton-dust#hazard-overview)).
+
+```{r lung-disease-eda}
+# Import the data
+lung_disease <- read_csv("../data/LungDisease.csv")
+
+# Generate the scatterplot
+lung_disease %>% 
+  ggplot(aes(Exposure, PEFR)) +
+  geom_point() +
+  my_theme +
+  labs(title = "Relationship between exposure to cotton dust and peak expiratory flow rate (PEFR)")
+```
+
+* The relationship is difficult to discern just looking at the scatterplot, so we can use the `lm()` function in R to construct a linear model and quantify the relationship between PEFR and exposure.
+
+```{r regression-model-1}
+# Create a linear regression model for exposure (predictor) and PEFR (response)
+mod1 <- lm(PEFR ~ Exposure, data = lung_disease)
+
+# Explore the summary information from the model output
+summary(mod1) %>% 
+  tidy() %>% 
+  kbl(caption = "Coefficient estimates from a simple linear regression model between exposure (predictor) and PEFR (response)") %>% 
+  kable_styling(full_width = FALSE,
+                bootstrap_options = "striped") %>% 
+  kable_classic_2()
+```
+
+## Multiple Linear Regression
+
+## Prediction Using Regression
+ 
+## Factor Variables in Regression
+ 
+## Interpreting the Regression Equation
+ 
+## Regression Diagnostics
+ 
+## Polynomial and Spline Regression
+ 
+ 
