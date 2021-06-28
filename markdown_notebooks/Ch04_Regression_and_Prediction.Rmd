@@ -19,6 +19,9 @@ library(janitor)
 library(kableExtra)
 library(broom)
 library(patchwork)
+library(lubridate)
+library(MASS)
+library(glmnet)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -140,6 +143,136 @@ lung_residuals_plot
 * Using linear regression to find coefficient estimates which minimize the RSS is called least squares regression or ordinary least squares regression.
 
 ## Multiple Linear Regression
+
+Notes:
+
+* The overall concepts are the same for multiple linear regression as they are for simple linear regression, except now we're dealing with more than one predictor.
+
+* For example, we can look at the `house_sales.csv` data set, which contains data on the adjusted sale price for homes in King County, Washington, along with a number of different predictors including square feet of living space, square feet of the lot, the number of bedrooms and bathrooms in different fields, and the building grade.  Multiple linear regression can help us to see the relative contributions of each predictor in explaining the variability in the response.  Note, the data set needed to be reformatted prior to importing as the fields were shifted.
+
+```{r king-county-housing-model}
+# Import the king county dataset
+house_sales <- read_csv("../data/house_sales.csv")
+
+# Reformat the date field
+house_sales <- house_sales %>% 
+  mutate(DocumentDate = as_date(DocumentDate, format = "%m/%d/%y"))
+
+# Isolate fields of interest
+house_sales_subset <- house_sales %>% 
+  select(AdjSalePrice, SqFtTotLiving, SqFtLot, Bathrooms, Bedrooms, BldgGrade)
+
+# Build linear model and drop records with missing data
+house_lm <- lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms + Bedrooms + BldgGrade, 
+               data = house_sales_subset, 
+               na.action = na.omit)
+
+# Print model results
+summary(house_lm) %>% 
+  tidy() %>% 
+  mutate(across(where(is.numeric), round)) %>% 
+  kbl(caption = "Model results for housing data in King County, Washington (rounded to the nearest integer)") %>% 
+  kable_styling(full_width = FALSE, 
+                bootstrap_options = "striped") %>% 
+  kable_classic_2()
+```
+
+* After constructing the multiple linear regression, we can see that all of the terms are statistically significant except the `SqFtLot` term, which defines the square feet of the lot (the p-value is greater than 0.05).  
+
+* Not surprisingly, it looks like the terms with the greatest influence, or the greatest change in the response (adjusted sales price) with each change in their value, are the square feet of total living space and building grade.
+
+* In the context of the data set, for every one square foot increase in total living space, the mean adjusted sales price rises $229.  
+
+* We can get other information about the model using `glance()`.
+
+```{r glance-house-model}
+# Use glance to gather additional summary information about the model
+glance(house_lm) %>% 
+  kbl(caption = "Summary information from the model evaluating adjusted home sale price in King County, Washington") %>% 
+  kable_styling(full_width = FALSE) %>% 
+  kable_classic_2()
+
+```
+
+* Looking at the R-squared and adjusted R-squared, the current predictors only explain a little over 50% of the variability in the response.  
+
+* Cross-validation is used to set aside a training set (usually most of the data) to train the statistical model, and then apply it to a new, unseen set (the validation set).
+
+* The adjusted R-squared adds a penalty term to the model in an effort to prevent overfitting; the AIC value also penalizes adding an additional terms.  Since the AIC method uses the logarithm of the residual sums of squares, a _k_ increase in the number of additional variables equates to a $2K$ penalty for the model.  
+
+* Stepwise regression can be performed, either by adding in variables one at a time (forward selection), or starting with all variables and removing them one at a time (backward elimination) to evaluate how the different combinations influence model fit using the metrics defined above.  We can also use the `stepAIC()` in the `MASS` package to evaluate models based on the AIC value.
+
+```{r stepwise-regression-AIC}
+# Use the stepwise AIC method to identify the "best" model with a few additional fields
+house_full <- lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms + 
+                   Bedrooms + BldgGrade + PropertyType + NbrLivingUnits +
+                   SqFtFinBasement + YrBuilt + YrRenovated + NewConstruction, 
+                 data = house_sales,
+                 na.action = na.omit)
+
+# Perform the stepwise regression 
+stepwise_model <- stepAIC(house_full, 
+                          direction = "both", 
+                          trace = FALSE)
+
+# Get the summary information from the ANOVA
+stepwise_model$anova
+```
+
+* From the stepwise AIC selection tool, we can see the initial model with all of the variables, then the final model with the lowest AIC including fields for square feet of total living space, number of bedrooms and bathrooms, building grade, property type, square feet in the basement, and the year built (the coefficients for the model terms are presented below).
+
+```{r stepwise-model-terms}
+# Print the coefficients for the final model
+stepwise_model %>% 
+  tidy() %>% 
+  kbl(caption = "Coefficients for the final model after performing stepwise regression using AIC") %>% 
+  kable_styling(full_width = FALSE, 
+                bootstrap_options = "striped") %>% 
+  kable_classic_2()
+```
+
+* Other model selection methods like ridge regression or LASSO regression penalize the inclusion of too many parameters, effectively shrinking the coefficients towards zero such that only the parameters that explain a relatively large proportion of the variability (i.e., the most important terms) are included in the model.
+
+* [This blogpost](https://drsimonj.svbtle.com/ridge-regression-with-glmnet) has a great tutorial for using ridge regression over OLS regression, which I've implemented on the housing data below using the same parameters as the stepwise AIC input.  One important component of the ridge regression model is the inclusion of a hyperparameter `lambda`, which controls the learning process (the other parameters, like the predictor variables, are learned in the training phase).
+
+* We'll use the `cv.glmnet()` function to perform a k-fold cross-validation to find an optimal value to use for the hyperparameter `lambda`.  The directions in the tutorial create a matrix of different values to try for the lambda parameter, or we can just let the `cv.glmnet()` function use its own to try.
+
+```{r ridge-regression-housing-data}
+# Define the vectors as input for the model
+y <- house_sales$AdjSalePrice
+x <- house_sales %>% 
+  dplyr::select(SqFtTotLiving, Bathrooms, Bedrooms, BldgGrade, 
+         PropertyType, SqFtFinBasement, YrBuilt) %>% 
+  data.matrix()
+
+# Use cross-validation to find value for lambda
+cv_fit <- cv.glmnet(x, y, alpha = 0)
+
+# Plot the mean squared error as a function of the log(lambda)
+data.frame(log_lambda = log(cv_fit$lambda), 
+           error = cv_fit$cvm, 
+           std_error = cv_fit$cvsd) %>% 
+  ggplot(aes(log_lambda, error)) +
+  geom_errorbar(aes(ymin = error - std_error, 
+                    ymax = error + std_error), 
+                width = 0.1, 
+                color = "grey") +
+  geom_point(color = "red") +
+  my_theme +
+  labs(x = "Log(lambda)", 
+       y = "Mean-squared error", 
+       title = "Cross-validation results of the mean-squared error as a funcion of lambda")
+
+```
+
+* We can then take the results of this cross-validation procedure and find the value of lambda which minimizes the mean-squared error using `cv_fit$lambda.min` and use that in the ridge regression model.  The error in the cross-validation procedure involves partitioning data into training and validation sets, then evaluating how well the model generalized using the coefficients learned in the training phase.
+
+```{r ridge-regression}
+# Use the value of lambda.min in the ridge regression model
+fit <- glmnet(x, y, alpha = 0, lambda = cv_fit$lambda.min)
+coef(fit)
+```
+
 
 ## Prediction Using Regression
  
