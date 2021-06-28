@@ -18,6 +18,7 @@ library(scales)
 library(janitor)
 library(kableExtra)
 library(broom)
+library(patchwork)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -71,6 +72,72 @@ summary(mod1) %>%
                 bootstrap_options = "striped") %>% 
   kable_classic_2()
 ```
+* From this output, we can see that both the `Intercept` and `Exposure` terms are statistically significant and are informative in the model.
+
+* When interpreting the coefficients, without taking into account any cotton dust exposure, the mean PEFR is approximately 424.
+
+* When we take into account exposure, for every one unit increase in exposure to cotton dust, there is a 4 unit decrease in PEFR.  
+
+* The residuals are calculated by subtracting each predicted value from the original value and serves as an indication of how well the model explains the variability in the response data.  
+
+* We can add both the predictions and the residuals as fields in the original data frame using the `modelr` package (see below).
+
+```{r add-predictions-residuals}
+# Add predicted values and residuals to the original data frame
+lung_disease_mod <- lung_disease %>% 
+  add_predictions(model = mod1) %>% 
+  add_residuals(model = mod1)
+
+# Plot the predicted values and the original data
+lung_pred_plot <- lung_disease_mod %>% 
+  pivot_longer(cols = c("PEFR", "pred", "resid"), 
+               names_to = "type", 
+               values_to = "value") %>% 
+  filter(type %in% c("PEFR", "pred")) %>% 
+  ggplot(aes(Exposure, value)) +
+  geom_point(aes(color = type), alpha = 0.75) +
+  scale_color_manual(values = c("darkgrey", "red")) +
+  my_theme +
+  theme(legend.position = "none") +
+  labs(y = "Value", 
+       title = "Relationship between exposure to cotton dust and PEFR", 
+       subtitle = "<strong style='color:darkgrey';>Original data</strong> are shown in grey; 
+       <strong style='color:red';>predicted values</strong> are shown in red")
+
+# Plot the residuals
+lung_residuals_plot <- lung_disease_mod %>% 
+  pivot_longer(cols = c("PEFR", "pred", "resid"), 
+               names_to = "type", 
+               values_to = "value") %>% 
+  filter(type %in% c("resid")) %>% 
+  ggplot(aes(Exposure, value)) +
+  geom_point() +
+  geom_hline(yintercept = 0, 
+             linetype = "dashed", 
+             color = "red") +
+  my_theme +
+  labs(y = "Value", 
+       title = "Residuals from the linear model between exposure and PEFR")
+
+# Put plots together
+lung_pred_plot
+```
+
+* From the plot above, we can see the predicted values from the linear model shown in red (i.e., the mean response for each value of the predictor variable) and the original data shown in grey.
+
+* There appears to be considerable variability in the mean response; we can dig into this more deeply looking at a plot of the residuals, or the difference between the predicted value and the original data.
+
+```{r residuals-plot}
+# Plot the residuals
+lung_residuals_plot
+
+```
+
+* We can see that the dashed line at Y = 0 and ideally, if the linear model described the variation in the original data, most of the points would cluster around that dashed line.  We can see that especially at higher levels of exposure, there is considerable variability.
+
+* The regression coefficients are chosen by minimizing the residual sum of squares (RSS), or coefficients which minimize the sum of the squared distances between the original data and the predicted value.
+
+* Using linear regression to find coefficient estimates which minimize the RSS is called least squares regression or ordinary least squares regression.
 
 ## Multiple Linear Regression
 
