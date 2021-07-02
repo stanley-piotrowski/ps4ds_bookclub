@@ -24,6 +24,7 @@ library(MASS)
 library(glmnet)
 library(tidymodels)
 library(modelr)
+library(ggcorrplot)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -413,8 +414,32 @@ data.frame(coefficients = house_sales_lm$coefficients) %>%
 
 ## Interpreting the Regression Equation
  
- 
- 
+* It's important to consider that some variables may be correlated, like the total size of the home, the numnber of bedrooms, and the number of bathrooms- this would make sense, because the number of bedrooms and bathrooms will generally increase with the size of the home.
+
+* Multicollinearity is an extreme case of correlation among predictor variables, which can happen when multiple predictors are nearly perfectly correlated with one another and will make it difficult to obtain a salient solution for the regression equation.
+
+* Multicollinearity is a major problem because it means that any change in the input data can dramatically change the coefficient estimates.  This would also mean that it would be hard for you to interpret how the response would change with a single change in the predictor variable.  To investigate multicollinearity among predictors, we could create a correlation plot (see below).
+
+```{r correlation-plot-multicollinearity}
+# Create a correlation plot to detect multicollinearity
+cor(house_sales_subset) %>% 
+  ggcorrplot(legend.title = "Correlation", 
+             outline.color = "white", 
+             lab = TRUE, 
+             type = "lower", 
+             hc.order = TRUE)
+
+```
+
+* The correlation plot shows that some of the variables are correlated (~0.77), like the square feet of living space and the building grade, along with the square feet of living space and the number of bathrooms and bedrooms.
+
+* Confounding variables can also be a problem, which is when there are variables that are important in explaining the variability in the data but are not included in the model (e.g., location in the housing data set).
+
+* Main effects are the effects of the predictor variables on the response independent of any of the other predictor variables; interactions are the effects of different predictors on one another to influence the response (e.g., in the housing data, there is almost definitely an interaction between the location and size of the house that will influence the overall price).
+
+* In the housing data, there was a clear relationship between the square footage of the home and the location- for example, in the most expensive areas, the interaction between the location and square footage increased the predicted sales price to almost a factor of 3.  
+
+* Tree models may be useful options to consider when dealing with many potential interaction terms.  
  
 ## Regression Diagnostics
  
