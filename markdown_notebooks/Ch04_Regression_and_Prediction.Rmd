@@ -1,8 +1,11 @@
 ---
 title: "Chapter 4: Regression and Prediction"
 output:
-  github_document:
+  html_notebook:
     toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: tango
 ---
 
 ```{r setup, warning = FALSE, message = FALSE}
@@ -20,6 +23,7 @@ library(lubridate)
 library(MASS)
 library(glmnet)
 library(tidymodels)
+library(modelr)
 
 # Set ggplot2 theme
 my_theme <- theme(
