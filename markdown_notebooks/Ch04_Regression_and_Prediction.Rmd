@@ -22,6 +22,7 @@ library(patchwork)
 library(lubridate)
 library(MASS)
 library(glmnet)
+library(tidymodels)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -31,6 +32,14 @@ my_theme <- theme(
   plot.subtitle = element_markdown(),
   plot.caption = element_markdown(face = "italic")
 )
+
+# Set kable layout and take a caption as an argument
+kable_layout <- function(df, caption) {
+  kbl(df, caption = caption) %>% 
+    kable_styling(full_width = FALSE, 
+                  bootstrap_options = "striped") %>% 
+    kable_classic_2()
+}
 
 ```
 
@@ -160,7 +169,7 @@ house_sales <- house_sales %>%
 
 # Isolate fields of interest
 house_sales_subset <- house_sales %>% 
-  select(AdjSalePrice, SqFtTotLiving, SqFtLot, Bathrooms, Bedrooms, BldgGrade)
+  dplyr::select(AdjSalePrice, SqFtTotLiving, SqFtLot, Bathrooms, Bedrooms, BldgGrade)
 
 # Build linear model and drop records with missing data
 house_lm <- lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms + Bedrooms + BldgGrade, 
@@ -270,15 +279,141 @@ data.frame(log_lambda = log(cv_fit$lambda),
 ```{r ridge-regression}
 # Use the value of lambda.min in the ridge regression model
 fit <- glmnet(x, y, alpha = 0, lambda = cv_fit$lambda.min)
-coef(fit)
+summary(fit)
+```
+* From here, we can compare the differences in coefficients from the OLS approach with the stepwise multiple linear regression and the ridge regression.
+
+```{r compare-coefficients}
+# Compare the coefficients from the OLS and ridge regressions
+ridge_df <- as.matrix(fit$beta) %>% 
+  data.frame() %>% 
+  rownames_to_column("Feature") %>% 
+  rename("Coefficient" = "s0") %>% 
+  mutate(Model = "Ridge", 
+         Coefficient = round(Coefficient, 2))
+
+ols_df <- as.matrix(stepwise_model$coefficients) %>% 
+  data.frame() %>% 
+  rownames_to_column("Feature") %>% 
+  rename("Coefficient" = ".") %>% 
+  mutate(Model = "OLS", 
+         Coefficient = round(Coefficient, 2)) 
+
+# Combine data frames
+rbind(ridge_df, ols_df) %>% 
+  pivot_wider(names_from = "Model", 
+              values_from = "Coefficient") %>% 
+  kbl(caption = "Difference in model coefficients using ridge and ordinary least squares regression") %>% 
+  kable_styling(full_width = FALSE, 
+                bootstrap_options = "striped") %>% 
+  kable_classic_2()
+```
+
+* Overall, we can see that in general, the coefficients from the ridge regression model are smaller than the coefficients from the OLS model, and the ridge regression model didn't split `PropertyType` into single family or townhouse.  
+
+* Weighted regression may be used in situations where measurements were taken with different precision.  For example, in the housing data, older home prices are less reliable than newer sales, so we will add a `Weight` field to compute the number of years passed since 2005 to include in our model.  
+
+```{r weighted-regression}
+# Create a weight field and calculate time since 2005 for the sale of the home
+weighted_lm <- house_sales %>% 
+  mutate(DocumentDateYear = year(DocumentDate), 
+         Weight = DocumentDateYear - 2005) %>% 
+  lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms +
+       Bedrooms + BldgGrade, data = ., weight = Weight)
+
+# Print the summary information for the regular lm and the weighted lm
+cbind(house_lm = round(house_lm$coefficients, 2), 
+      weighted_lm = round(weighted_lm$coefficients, 2)) %>% 
+  data.frame() %>% 
+  rownames_to_column("Feature") %>% 
+  rename_all(., str_to_sentence) %>% 
+  kbl(caption = "Coefficients for features from normal and weighted linear regression") %>% 
+  kable_styling(full_width = FALSE, 
+                bootstrap_options = "striped") %>% 
+  kable_classic_2()
 ```
 
 
 ## Prediction Using Regression
- 
+
+* The major motivation behind regression in data science is prediction, but it's important to keep in mind that predictions can only be made within the range of values in the predictor variables that the regression model was trained on.
+
+* Bootstrapping can be used to generate confidence intervals around coefficient estimates by randomly drawing records from the pool (e.g., 100 times to generate a large sample), fitting the bootstrap sample data to a regression model and recording the output, then repeat those two steps a number of times (e.g., 1,000) to generate a distribution of possible coefficient estimates for each parameter.  The 95% confidence interval then is constructed by finding the appropriate percentiles for the desired level of confidence (e.g., 95% confidence interval).  We can use the `tidymodels::bootstraps()` function to generate bootstrap samples of our original data, fit linear regression models (or other models) to the samples, and evaluate the distribution of the coefficient estimates. 
+
+```{r coefficient-confidence-intervals}
+# Generate 1,000 bootstrap sample sets
+boots <- bootstraps(house_sales_subset, times = 1000)
+class(boots)
+
+# The result is an rset object, which consists of an analysis data set (the bootstrapped sample) and the assessment data set (the out of bag samples, or the ones not chosen in the sampling process)
+
+# Now, we'll create a function that will fit a linear model to the bootstrap samples, using the analysis() function, which takes the boots object and only grabs the bootstrap samples (in-the-bag samples)
+fit_lm_to_boots <- function(split) {
+  lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms + Bedrooms + BldgGrade, 
+     data = analysis(split))
+}
+
+# Now map this function to each bootstrap sample, plus the tidy() function to get the coefficients from the models
+boots_models <- boots %>% 
+  mutate(model = map(splits, fit_lm_to_boots), 
+         coef_info = map(model, tidy))
+
+# Unnest the coefficient info 
+boots_coefs <- boots_models %>% 
+  unnest(coef_info)
+
+# Calculate 95% confidence intervals using the percentile method
+percentile_intervals <- int_pctl(boots_models, coef_info)
+
+# Visualize the distribution of the coefficients with 95% confidence intervals
+boots_coefs %>% 
+  dplyr::select(-c("splits", "model")) %>% 
+  ggplot(aes(estimate)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = .lower), data = percentile_intervals, color = "red", linetype = "dashed") +
+  geom_vline(aes(xintercept = .upper), data = percentile_intervals, color = "red", linetype = "dashed") +
+  facet_wrap(~ term, scales = "free") +
+  my_theme +
+  theme(
+    strip.background = element_rect(color = "black", fill = "lightskyblue"), 
+    strip.text = element_text(face = "bold")
+  ) +
+  labs(x = "Estimate", 
+       y = "Count", 
+       title = "Distribution of linear model coefficient estimates from 1,000 bootstrapped samples")
+```
+
+* A key consideration when interpreting prediction versus confidence intervals is that prediction intervals model uncertainty around a single point; confidence intervals model uncertainty around a mean calculated from a range of values.  
+
 ## Factor Variables in Regression
- 
+
+* Linear regression models require numeric inputs, but some features may be categorical, and can be converted to a "dummy variable" or a numeric variable.
+
+* In certain machine learning applications, we can use the `model.matrix()` function to create dummy variables for each of the features.  For example, if there are three categorical variables for one feature, the function would expand that vector into a three-column matrix, with the value for a "yes" or "no" for that category of feature represented as a 1 or 0 for each record.
+
+* In regression, the first level of the categorical variable is used as a reference, and we interpret the coefficients for the other levels relative to that reference.  For example in the housing data, there three levels to the `PropertyType` field: `Multiplex`, `Single Family`, and `Townhouse`.  
+
+* The regression coefficients from the stepwise model are for `PropertyType Single Family` and `PropertyType Townhouse`, indicating that we need to interpret these coefficients in reference to `PropertyType Mutliplex` (see below).
+
+```{r stepwise-coefficients}
+# Print the stepwise coefficients to compare the estimates to the PropertyType Multiplex level
+house_sales_lm <- house_sales %>% 
+  lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms +
+       Bedrooms + BldgGrade + PropertyType, data = .) 
+
+# Get coefficients and print
+data.frame(coefficients = house_sales_lm$coefficients) %>% 
+  rownames_to_column("feature") %>%  
+  kable_layout(caption = "Coefficient estimates from stepwise linear regression model")
+
+```
+
+* Based on these coefficient estimates, relative to multiplex homes, single family homes were worth approximately 85,000 USD less (holding all other factors constant), and townhouses were worth approximately 150,000 USD less.   
+
 ## Interpreting the Regression Equation
+ 
+ 
+ 
  
 ## Regression Diagnostics
  
