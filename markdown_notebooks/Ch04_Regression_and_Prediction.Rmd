@@ -440,8 +440,115 @@ cor(house_sales_subset) %>%
 * In the housing data, there was a clear relationship between the square footage of the home and the location- for example, in the most expensive areas, the interaction between the location and square footage increased the predicted sales price to almost a factor of 3.  
 
 * Tree models may be useful options to consider when dealing with many potential interaction terms.  
- 
+
 ## Regression Diagnostics
+
+* The standardized residuals are the residuals of a record divided by the standard error. Practically, these can be interpreted as the number of standard errors away from the regression line.
+
+* Below, we've fitted a model with the zipcode 98105, and we'll calculate the standardized residuals using the `rstandard()` function.
+
+```{r housing-model-98105-zipcode}
+# Subset the housing data
+house_sales_98105 <- house_sales %>% 
+  filter(ZipCode == "98105")
+
+# Fit a linear model
+house_mod_98105 <- lm(AdjSalePrice ~ SqFtTotLiving + 
+                        SqFtLot + Bathrooms + Bedrooms +
+                        BldgGrade, 
+                      data = house_sales_98105)
+
+# Calculate the standardized residuals
+std_residuals <- rstandard(house_mod_98105)
+
+# Look at the standardized residuals
+data.frame(std_resid = std_residuals) %>% 
+  rownames_to_column("record") %>% 
+  ggplot(aes(std_resid)) +
+  geom_histogram(bins = 30) +
+  my_theme +
+  scale_x_continuous(breaks = seq(-5, 5, by = 2.5)) +
+  labs(title = "Some records are more than four standard errors from the regression line", 
+       x = "Standardized resdiuals", 
+       y = "Count")
+
+# Extract the records with the most extreme standardized residuals
+std_resid_df <- data.frame(std_resid = std_residuals) %>% 
+  rownames_to_column("record")
+
+# Bind the standardized residuals df to the original data
+house_sales_98105 <- house_sales_98105 %>% 
+  mutate(std_resids = std_resid_df$std_resid) %>% 
+  dplyr::select(AdjSalePrice, SqFtTotLiving, SqFtLot, 
+         Bathrooms, Bedrooms, BldgGrade, std_resids)
+
+# Filter data to find the most influential observations based on the standardized residuals (> 2.5)
+house_sales_98105 %>% 
+  filter(std_resids > 2.5) %>% 
+  arrange(desc(std_resids))
+```
+
+* There is an important difference between an outlier, which will have a large residual (i.e., difference between the predicted value from the regression model and the actual observation) versus a point that has a high leverage, or large influence in the regression model. 
+
+* One of the metrics utilized to evaluate the influence of individual observations is the hat-value.  
+
+* Another metric to evalute the influence of an individual observation is the Cook's distance, which takes into account the leverage and the size of the residual.
+
+* Some of the metrics can be calculated using the `fortify()` function, which will calculate the hat-values and Cook's distance, in addition to extract the fitted values from the regression model.  All of these values will be bound to the original data frame (supplied in the `data` argument).
+
+```{r fortify-extract-data}
+# Extract fitted values and calculate model fit statistics
+house_sales_98105 <- fortify(house_mod_98105, 
+                             data = house_sales_98105)
+
+# Create a bubble plot with the hat values on the x-axis and standardized residuals on the y-axis
+house_sales_98105 %>% 
+  ggplot(aes(.hat, std_residuals)) +
+  geom_point(aes(size = 10*sqrt(.cooksd)), 
+             shape = 21) +
+  geom_hline(yintercept = c(-2.5, 2.5),
+             linetype = "dashed", 
+             color = "red")
+```
+
+* The above bubble plot shows the hat-values on the x-axis and the standardized residuals on the y-axis, and the size of the points is related to the Cook's distance.
+
+* [These online statistics notes](https://online.stat.psu.edu/stat462/node/173/) introduce the idea of using Cook's distance, which takes into account both the residuals and the hat-values.  Essentially, the metric describes how the behavior of all of the fitted values change when a particular observation is deleted.
+
+* For example, a point with a large Cook's disatnce indicates that removing that observation from the data set will have a large influence on the behvaior of the remaining fitted values (i.e., it will have a large influence on the regression overall).
+
+* The textbook suggests that an observation is influential if the Cook's distance is greater than $4/(n-P-1)$, where $n$ is the total number of observations, and $P$ is the number of explanatory variables in the model.
+
+```{r cooks-distance-histogram}
+# Create a histogram of Cook's distance 
+house_sales_98105 %>% 
+  ggplot(aes(.cooksd)) +
+  geom_histogram()
+```
+
+* We can see that most of the Cook's distances are near 0, but there are several greater than 0.1.  We can compare the coefficients of the original model and a new model with the influential observations removed (i.e., Cook's distance > 0.1).
+
+```{r remove-influential-records}
+# Get original house model coefficients into a data frame
+house_mod_df <- house_mod_98105 %>% 
+  tidy() %>% 
+  dplyr::select(term, estimate) %>% 
+  rename(all_records_estimate = estimate)
+
+# Remove influential records with Cook's distance > 0.1
+house_sales_98105 %>% 
+  filter(.cooksd < 0.1) %>% 
+  lm(AdjSalePrice ~ SqFtTotLiving + SqFtLot + Bathrooms + 
+       Bedrooms + BldgGrade, data = .) %>% 
+  broom::tidy() %>% 
+  dplyr::select(term, estimate) %>% 
+  rename(influential_removed_estimate = estimate) %>% 
+  left_join(house_mod_df, by = "term") %>% 
+  dplyr::select(term, all_records_estimate, influential_removed_estimate) %>% 
+  mutate(across(where(is.numeric), round))
+  
+```
+* The regression coefficients change quite dramatically after the influential observations have been removed, particularly for the `Bathrooms` term.
  
 ## Polynomial and Spline Regression
  
