@@ -550,6 +550,68 @@ house_sales_98105 %>%
 ```
 * The regression coefficients change quite dramatically after the influential observations have been removed, particularly for the `Bathrooms` term.
  
+* Another key regression diagnostic we can evaluate is heteroskedascity, which looks at the distribution of the variance across the different predicted values.  Essentially, we are looking for a model in which the variance between the predicted values and the residuals are constant; in a case of a data set which displays heteroskedascity, the variance in residuals will be different across the range of predicted values.
+
+* For example, we can use the `add_predictions()` function to add the predicted values from the housing model to the original data frame, then plot the predicted values on the x-axis versus the absolute value of the residuals on the y-axis.
+
+```{r abs-residuals-vs-predicted}
+# Add the predicted values and residuals to the original data frame
+house_sales_98105 %>% 
+  add_predictions(house_mod_98105) %>% 
+  add_residuals(house_mod_98105) %>% 
+  ggplot(aes(pred, abs(resid))) + 
+  geom_point(alpha = 0.65) +
+  geom_smooth(se = TRUE) +
+  my_theme +
+  labs(x = "Predicted value", 
+       y = "Absolute value of the residuals", 
+       title = "Heteroskedascity is observed in the housing model in the 98105 zipcode")
+
+
+
+
+```
+
+* We can see from this plot that the higher predicted values displays heteroskedascity, and so do lower predicted values, which indicates that for some values, the model may not be accounting for other factors.
+
+```{r}
+house_sales_98105 %>% 
+  fortify(model = house_mod_98105) %>% 
+  ggplot(aes(sample = .stdresid)) +
+  stat_qq(alpha = 0.65) +
+  stat_qq_line(linetype = "dashed", 
+               color = "red") +
+  my_theme +
+  labs(x = "Theoretical quantile", 
+       y = "Empirical quantile", 
+       title = "QQ-plot demonstrates heteroskedastic error in low and high predicted values")
+  
+```
+
+* The QQ-plot above also demonstrates how the empirical quantiles differ from the theoretical quantiles from the data, if the standardized residuals were normally distributed.  
+
+* There are a variety of smoothing algorithms to visualize the smoothed relationship between variables in a scatterplot.  The help documentation from the super smoother (`supsmu`) method suggests performing cross-validation to choose the optimal smoothing approach for each prediction.  
+
+* Partial residual plots can be constructed by summing the predicted value and the residuals.  We can isolate each predictor variable, look at the partial residual plot, and evaluate the contribution of that predictor variable to the overall adjusted sale price of the home. 
+ 
+```{r partial-residuals-plot}
+# Calculate the partial residuals
+house_sales_98105_partial_resid <- predict(house_mod_98105, 
+        type = "terms") %>% 
+  data.frame() %>% 
+  rename_with(~ paste(.x, "_prediction", sep = "")) %>% 
+  cbind(house_sales_98105) %>%
+  add_residuals(model = house_mod_98105)
+  
+# Isolate SqFtTotLiving and calculate partial resid
+house_sales_98105_partial_resid %>% 
+  dplyr::select(SqFtTotLiving, resid) %>% 
+  mutate(partial_resid = SqFtTotLiving + resid) %>% 
+  ggplot(aes(SqFtTotLiving, partial_resid)) +
+  geom_point()
+```
+
+ 
 ## Polynomial and Spline Regression
  
  
