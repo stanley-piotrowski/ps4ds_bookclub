@@ -1,9 +1,12 @@
 ---
-title: "Chapter 4: Regression and Prediction"
+title: 'Chapter 4: Regression and Prediction'
 output:
+  html_document:
+    toc: yes
+    df_print: paged
   html_notebook:
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
     theme: cerulean
     highlight: tango
 ---
