@@ -1,0 +1,157 @@
+---
+title: 'Chapter 5: Classification'
+output:
+  html_notebook:
+    toc: yes
+    toc_float: yes
+    theme: cerulean
+    highlight: tango
+---
+
+```{r setup, warning = FALSE, message = FALSE}
+# Libraries
+library(tidyverse)
+library(kableExtra)
+library(modelr)
+library(klaR)
+library(ggtext)
+
+# Set ggplot2 theme
+my_theme <- theme(
+  panel.grid = element_blank(), 
+  panel.background = element_rect(fill = "white", color = "black"), 
+  plot.title = element_markdown(), 
+  plot.subtitle = element_markdown(), 
+  plot.caption = element_markdown()
+)
+
+# Set kableExtra printing layout
+kable_layout <- function(df, caption) {
+  df %>% 
+    kbl(caption = caption) %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE) %>% 
+    kable_classic_2()
+}
+```
+
+
+## Introduction
+
+* Classification is a form of supervised machine learning in which we use training data with defined binary outcomes to try and predict the outcome of new data (e.g., is an image a cat or a dog, or is an email normal or spam).
+
+* In other cases, there are multiple "classes" in which a record could belong to, and tools can provide a probability of classification with thresholds used to determine the ultimate decision.
+
+* In cases with multiple "classes," the problem can be broken up into several binary decisions: for example, 0 or 1, and then if 1, is an observation 1 or 2.  
+
+* The basic workflow for these classification problems is as follows: establish a probability threshold, above which a record is assigned for a given class; estimate the probability that a record belongs to various classes; if the estimated probability is greater than the established threshold, assign the record to that class.
+
+## Naive Bayes
+
+* The basic tenant of the naive Bayes algorithm is to estimate the probability of observing a predictor value given the outcome (i.e., using the data themselves).  
+
+* This is defined as the conditional probability, written as $P(Y_i|X_i)$, or the probability ($P$) of an outcome ($Y_i$) given some variable $X_i$.
+
+* One of the major assumptions of the naive Bayes approach is that features (variables) are independent, and the presence of one feature doesn't influence the presence of another.  Another assumption made is that each feature has an equal effect on the outcome.  
+
+* Using the same notation as above, we can write Bayes' theorem: $P(Y|X) = \frac{P(X|Y) * P(Y)}{P(X)}$
+
+* Here, $X$ represents the different features used in the classification: $X = (X_1, X_2, X_3, ...,  X_n)$
+
+* We can expand this expression using the chain rule to describe the probability of $Y$ for each of $X_n$ features:
+$P(Y|X_1, X_2, X_3, ..., X_n) = \frac{P(X_1|Y)P(X_2|Y)P(X_3|Y)...P(X_n|Y)}{P(X_1)P(X_2)P(X_3)...P(X_n)}$
+
+* In another example using [this StatQuest video](https://www.youtube.com/watch?v=O2L2Uv9pdDA), if we wanted to classify if an email was "normal" or "spam," we'd use the training data (i.e., the data for which we have known outcomes) to do two things: 1) estimate the probability that an email is "normal" or "spam" by taking the "normal" emails divided by the total (and similarly for the probability that an email is "spam"); and 2) calculating the probability that each word is observed in a "normal" versus "spam" email, by taking the number of times that word is observed in each respective class, divided by the total number of words in that class.  
+
+* Using a specific example, we know the probability that an email is "normal" is 0.67 (8 emails are "normal" and there are 14 total emails), and the probabilities that the words "dear" and "friend" will be seen in a "normal" email are 0.47 and 0.29, respectively.  So, if we receive an email with the sentence "Dear friend," we essentially get rid of the denominator portion in Bayes' theorem to yield: $P(Y|X) = P(X|Y) * P(Y)$.
+
+* In the context of the above example, $P(Y|X) = P(normal|"dear") * P(normal|"friend") * P(normal)$.  We can plug in each of these numbers to get the following: 0.47 (probability of seeing "dear" given that an email is "normal") x 0.29 (probability of seeing "friend" given that an email is "normal") x 0.67 (probability that the email is "normal"), which works out to 0.09.  We do the same thing for the other scenario, evaluating the probability of seeing each of those words if an email was "spam," which works out to 0.01.  These results are proportional to the probability that the email is of one of two classes, given the data.  In this example, 0.09 is greater than 0.01, so we would conclude that an email with "Dear friend" is a "normal" email.
+
+* However, one of the pitfalls of naive Bayes is that it assumes each predictor is independent and ignores any complex relationships that may be present in the data.  In the above examples, there is no distinction made between "Dear friend" versus "Friend dear," even though the first configuration will have more weight than the second one.  
+
+* Because of the inherent properties of the naive Bayes algorithm, it tends to have high bias.  Bias refers to the propensity of a model to over-simplify the relationship between the response and the predictor, measured as the difference between the mean predicted value and the actual value.  On the other hand, variance refers to the propensity of the model predictions to change when presented with new data, which is often a consequence of overfitting when a model captures the noise present in the data.
+
+* In the example below, we'll estimate a naive Bayes model with the `loan_data`.  A subset of the larger data frame is shown below, which comprises data on the loan amount, the annual income of the borrower, the purpose of the loan, and the status of the loan. 
+
+```{r loan-data-import, message = FALSE, warning = FALSE}
+# Import data and convert all character fields to factors
+loan_data <- read_csv("../data/loan_data.csv") %>% 
+  rename("record" = X1) %>% 
+  mutate(across(where(is.character), factor))
+
+head(loan_data) %>% 
+  kable_layout(caption = "Subset of loan data")
+```
+
+* We'll use a naive Bayes model to classify the loan outcome based on the purpose of the loan, whether or not the borrower owns or rents a home, and length of employment of the borrower.  First, we'll look at the number of different outcomes in this data set.
+
+```{r loan-data-outcome-summary}
+# Get summary information on the loan outcomes
+loan_data %>% 
+  group_by(outcome) %>% 
+  summarise(count = n()) %>% 
+  kable_layout(caption = "Loan outcome data")
+```
+
+* Now, we'll fit the naive Bayes model to classify the loans as either `default` (failure to meet the legal obligations of the loan), or `paid off`.  
+
+```{r loan-data-naive-bayes}
+# Fit the naive Bayes model
+loan_naive_bayes <- NaiveBayes(outcome ~ purpose_ + home_ + emp_len_, 
+                               data = na.omit(loan_data))
+
+# Print model output
+loan_naive_bayes$tables
+```
+
+* The model results are proportional to $P(X|Y)$, or the conditional probability of some feature, given the outcome.  For example, if we look at the `purpose_` field, we can see the conditional probabilities of debt consolidation for the default class versus the paid-off class.  Thus, if we wanted to use these results to predict the loan status of a new credit card loan for a borrower that owns a home and has been employed for more than one year, the equation would look like this (for one outcome): $P(Y|X) = P(default|creditcard) * P(default|own) * P(default|>1 year) * P(default)$, which ultimately works out to $P(Y|X) = 0.15151515 * 0.0832782 * 0.95271492 * 0.5 = 0.006010635$.
+
+* We get the a priori probabilities from the `apriori` slot in the `loan_naive_bayes` object, which is simply the probability of a `default` or `paid off` outcome, given the number in each category and the total number of loans in the data set.  We can compare the above probability of a default loan, compared to a paid off loan, by substituting the other conditional probabilities: $P(Y|X) = P(paidoff|creditcard) * P(paidoff|own) * P(paidoff|>1 year) * P(paidoff)$, which works out to $P(Y|X) = 0.18759649 * 0.0808963 * 0.96894711 * 0.5 = 0.007352304$. 
+
+* Based on these two results, we would conclude that a borrower that owns a home and has been employed for more than 1 year will pay off a credit card loan. 
+
+* We can look at these such loans in our data using 
+```{r naive-bayes-predictions}
+# Predict posterior probability of a record using the naive Bayes classifier
+new_loan <- loan_data %>% 
+  filter(purpose_ == "credit_card" & home_ == "OWN" & emp_len_ == "> 1 Year") %>% 
+  dplyr::select(purpose_, home_, emp_len_) %>% 
+  head(n = 1)
+
+predict(loan_naive_bayes, new_loan)
+```
+
+* We can take this one step further and classify the observations as `default` or `paid off` based solely on these predictors using the naive Bayes results.
+
+```{r naive-bayes-predictions-all}
+# Predict
+loan_subset <- loan_data %>% 
+  filter(purpose_ == "credit_card" & home_ == "OWN" & emp_len_ == "> 1 Year") %>% 
+  dplyr::select(record, purpose_, home_, emp_len_, outcome) 
+  
+loan_classifications <- predict(loan_naive_bayes, loan_subset) %>% 
+  pluck("class") %>% 
+  data.frame(classification = .) %>% 
+  cbind(loan_subset) 
+
+# Plot to visualize the differences
+loan_classifications %>% 
+  mutate(assignment = ifelse(classification == outcome, "correct", "incorrect")) %>% 
+  group_by(assignment) %>% 
+  summarise(count = n()) %>% 
+  mutate(count_prop = round(count / 536, 2)) %>% 
+  kable_layout(caption = "Proportion of correct and incorrect loan outcome assignments using a naive Bayes classifier")
+```
+
+* We can see from this table that the naive Bayes classifier only correctly assigned records about 54% of the time, indicating there are likely other features that are important to categorize outcomes.  
+
+* [This](https://uc-r.github.io/naive_bayes) is another good tutorial for implementing naive Bayes models using other packages like `caret` and `h2o` and employing a cross-validation framework to evaluate the model performance.  
+
+* One thing to note is that if a feature doesn't appear in a training set for the model for a particular response class, the posterior probability of the response will be 0, since we're multiplying conditional probabilities for each feature and response class.  To mitigate this problem, we can use a Laplace smoother, which adds a small number to the counts in each feature, such that the counts of each feature are non-zero.  
+
+## Discriminant Analysis
+
+## Logistic Regression
+
+## Evaluating Classification Models
+
+## Strategies for Imbalanced Data
