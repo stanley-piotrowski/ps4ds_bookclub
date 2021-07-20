@@ -109,7 +109,6 @@ loan_naive_bayes$tables
 
 * Based on these two results, we would conclude that a borrower that owns a home and has been employed for more than 1 year will pay off a credit card loan. 
 
-* We can look at these such loans in our data using 
 ```{r naive-bayes-predictions}
 # Predict posterior probability of a record using the naive Bayes classifier
 new_loan <- loan_data %>% 
@@ -148,7 +147,41 @@ loan_classifications %>%
 
 * One thing to note is that if a feature doesn't appear in a training set for the model for a particular response class, the posterior probability of the response will be 0, since we're multiplying conditional probabilities for each feature and response class.  To mitigate this problem, we can use a Laplace smoother, which adds a small number to the counts in each feature, such that the counts of each feature are non-zero.  
 
+* We can apply this same naive Bayes algorithm to the `iris` data set, which is composed of 150 records and 5 variables including `Sepal.Length`, `Sepal.Width`, `Petal.Length`, `Petal.Width`, and `Species`.  
+
+```{r naive-bayes-iris}
+# Apply the naive Bayes classifier to the iris dataset 
+iris_naive_bayes <- NaiveBayes(Species ~ ., data = iris)
+
+# Predict the species using the classifier
+iris_predictions <- predict(iris_naive_bayes, iris) %>% 
+  pluck("class") %>% 
+  data.frame(classification = .) %>% 
+  cbind(iris) %>% 
+  mutate(assignment = ifelse(classification == Species, "correct", "incorrect"))
+
+# Print results
+iris_predictions %>% 
+  group_by(assignment) %>% 
+  summarise(count = n()) %>% 
+  mutate(count_prob = round((count / 150), 2)) %>% 
+  kable_layout(caption = "Probability of correct iris species assignments using the naive Bayes classifier")
+```
+
 ## Discriminant Analysis
+
+* One of the most widely used discriminant analyses is the linear discriminant analysis (LDA), which applies a discriminant function to maximize the separation of records into distinct classes using the discriminant weights. 
+
+* Covariance describes the joint relationship between two variables.  For example, if greater values of one variable are associated with greater values of another variable, the covariance between them is positive; the same holds true with lesser values of one variable and lesser values of another.  If greater values of one are associated with lesser values of another, the covariance is negative.  
+
+* For example, using the `iris` data set again, we can find the covariance between each of the variables after removing the `Species` field.  Note, covariance is not constrained between -1 and 1, but depends on the scale of the variables being considered. 
+
+```{r iris-covariance matrix}
+iris %>% 
+  dplyr::select(-Species) %>% 
+  cov()
+```
+
 
 ## Logistic Regression
 
