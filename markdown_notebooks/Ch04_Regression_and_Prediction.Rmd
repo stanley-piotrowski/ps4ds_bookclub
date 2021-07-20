@@ -26,6 +26,8 @@ library(tidymodels)
 library(modelr)
 library(ggcorrplot)
 library(moderndive) # for additional regression functions
+library(splines) # fitting spline regression models
+library(mgcv) # gitting generalized additive models
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -575,7 +577,8 @@ house_sales_98105 %>%
 
 * We can see from this plot that the higher predicted values displays heteroskedascity, and so do lower predicted values, which indicates that for some values, the model may not be accounting for other factors.
 
-```{r}
+```{r qq-plot-heteroskedascity}
+# Create QQ-plot showing the heteroskedastic error in low and high predicted values
 house_sales_98105 %>% 
   fortify(model = house_mod_98105) %>% 
   ggplot(aes(sample = .stdresid)) +
@@ -622,6 +625,8 @@ partial_resid_df %>%
 
 ## Polynomial and Spline Regression
 
+### Polynomial Regression
+
 * In some cases, the response is not a linear function of the explanatory variables, and the ordinary least squares regression method isn't appropriate to capture all of the variation in the data.  
 
 * In some cases, transformation of the predictors is feasible (e.g., log-transformation to indicate a multiplicative change in the response variable).  
@@ -635,4 +640,112 @@ house_mod_98105_poly <- lm(AdjSalePrice ~ poly(SqFtTotLiving) + SqFtLot + Bathro
 
 ```
 
+
+### Spline Regression
+
+* In other cases, we can use a spline, or essentially a function fit to discrete, fixed points in a predictor variable, called knots.  The function is composed of piecemeal polynomial functions.  
+
+* The spline can be thought of as bending a string that's connecting various beads together.
+
+* The `splines` package can be used to add spline terms in a regression model.  The one we'll use here is the b-spline, called with the `bs()` function.  
+
+* By default, the `bs()` function defines the knots (the fixed points in the predictor variable) as the boundaries, but we can define further knots as well.  In the example of the housing data below, we'll fit a spline term with `SqFtTotLiving` and define the quantiles as the other knots for the curve to move through.  We're also defining that we want to fit a cubic spline, set with the `degree` argument in the `bs()` function call.
+
+```{r spline-regression-sqfttotlinvg}
+# Fit a spline term in the SqFtTotLiving variable in the 98105 housing data
+# Define the additional knots for the curve to move through
+knots <- quantile(house_sales_98105$SqFtTotLiving, 
+                  p = c(0.25, 0.5, 0.75))
+
+# Fit the linear spline regression
+house_mod_98105_spline <- lm(AdjSalePrice ~ bs(SqFtTotLiving, knots = knots, degree = 3) +
+                               SqFtLot + Bedrooms + Bathrooms + BldgGrade, data = house_sales_98105)
+
+# Calculate the partial residuals
+term <- predict(house_mod_98105_spline, 
+                type = "terms") %>% 
+  data.frame()
+
+partial_resid<- resid(house_mod_98105_spline) + term
+
+# Plot the partial residuals along with the actual values
+data.frame(SqFtTotLiving = house_sales_98105$SqFtTotLiving, 
+           Prediction = term$bs.SqFtTotLiving..knots...knots..degree...3., 
+           Partial_resid = partial_resid$bs.SqFtTotLiving..knots...knots..degree...3.) %>% 
+  ggplot(aes(SqFtTotLiving, Partial_resid)) +
+  geom_point(alpha = 0.65) +
+  geom_smooth(se = TRUE, linetype = "dashed") +
+  geom_line(aes(SqFtTotLiving, Prediction), color = "red") +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE, big.mark = ",")) +
+  my_theme +
+  labs(x = "Square feet, total living space", 
+       y = "Partial residuals", 
+       title = "Fitted <span style='color:red'><strong>spline</strong></span> regression line relative to a 
+       <span style='color:blue'><strong>smooth</strong></span> curve")
+```
+
+## Generalized Additive Models
+
+* In some cases, polynomials may not be able to capture the variability in response for a set of predictor variables, and because the spline regression requires defining the knots, it may not be appropriate without prior knowledge.
+
+* [This blogpost] has an excellent description of the similarities and differences between generalized linear models (GLM) and generalized additive models (GAM) and how the latter can be used to understand complex, non-linear relationships between predictors and responses.
+
+* One key difference between GLM and GAM is the latter uses non-parametric functions to define the terms included in the model, meaning that instead of using functions with a small set of parameters, the functions are defined by the data themselves.  This is a more flexible approach when we don't necessarily know what the patterns may look like.
+
+* Regularization helps to prevent overfitting, making a model more "regular" or more generalizable to new, unseen data.
+
+* One of the important features of GAMs is that we can control the smoothing functions to avoid the "wiggly" smooth lines that obscure interpretability in model output, for example, given some prior knowledge that a process may be smooth in nature.
+
+* In situations where the relationship between a predictor and response is non-linear and has a complex shape, like a "hockey-stick" associated with a plateau in the response, fitting different terms in a GLM to try and model that behavior in the response can be difficult.  The GAM framework derives the function of the predictor using the data themselves. 
+
+* I've followed a tutorial from the website linked above as a brief introduction to GAMs.  To start, we'll simulate some data with two variables, `x` (predictor) and `y` (response), where the relationship between these two variables follows a sine function.  We'll also introduce some normally distributed error terms.
+
+```{r simulate-data-gam}
+# Create some simulated data where X and Y follow a sine function with normally distributed errors
+set.seed(3)
+x <- seq(0, 2*pi, 0.1)
+z <- sin(x)
+y <- z + rnorm(mean = 0, 
+               sd = 0.5 * sd(z), 
+               n = length(x))
+df <- cbind.data.frame(x, y, z)
+
+# Print output
+head(df) %>% 
+  kable_layout(caption = "Simulated data for GAM tutorial")
+```
+
+* We then want to fit the model $y = s_\lambda(x) + e$, where $s_\lambda(x)$ is the smooth function, where the level of "smoothness" is determined by the parameter $\lambda$.  The higher the value of $\lambda$, the more smooth the curve, but we need to strike a balance between a "wiggly" line with $\lambda = 0$, which will generally go through most of the points but miss the overall pattern in the data; versus a completely smooth line.
+
+* Ultimately, the idea is to fit lines with different values of $\lambda$ and then calculate the distance between the smoothed line and the true underlying pattern (the sine curve).
+
+* We can take these concepts to the housing data to fit a GAM using the code below.
+
+```{r gam-housing-data}
+# Fit a GAM for the housing 98105 data
+house_mod_98105_gam <- gam(AdjSalePrice ~ s(SqFtTotLiving) + SqFtLot + Bathrooms + 
+                             Bedrooms + BldgGrade, data = house_sales_98105)
+
+# The 's()' function finds the best knots to "feed" the spline through
+
+# PLot the partial residuals
+terms <- predict(house_mod_98105_gam, type = "terms") %>% 
+  data.frame()
+partial_resid <- resid(house_mod_98105_gam) + terms %>% 
+  data.frame()
+
+data.frame(SqFtTotLiving = house_sales_98105$SqFtTotLiving, 
+           Prediction = terms$s.SqFtTotLiving., 
+           Partial_resid = partial_resid$s.SqFtTotLiving.) %>% 
+  ggplot(aes(SqFtTotLiving, Partial_resid)) +
+  geom_point(alpha = 0.65) +
+  geom_smooth(se = TRUE, linetype = "dashed") +
+  geom_line(aes(SqFtTotLiving, Prediction), color = "red") +
+  my_theme +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE, big.mark = ",")) +
+  labs(x = "Square feet, total living space", 
+       y = "Partial residual", 
+       title = "<span style='color:red'><strong>GAM curve</strong></span> relative to a 
+       <span style='color:blue'><strong>smooth curve</strong></span>")
+```
 
