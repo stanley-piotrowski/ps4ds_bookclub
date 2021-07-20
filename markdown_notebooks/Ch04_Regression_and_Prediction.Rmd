@@ -25,6 +25,7 @@ library(glmnet)
 library(tidymodels)
 library(modelr)
 library(ggcorrplot)
+library(moderndive) # for additional regression functions
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -595,23 +596,43 @@ house_sales_98105 %>%
 * Partial residual plots can be constructed by summing the predicted value and the residuals.  We can isolate each predictor variable, look at the partial residual plot, and evaluate the contribution of that predictor variable to the overall adjusted sale price of the home. 
  
 ```{r partial-residuals-plot}
-# Calculate the partial residuals
-house_sales_98105_partial_resid <- predict(house_mod_98105, 
-        type = "terms") %>% 
-  data.frame() %>% 
-  rename_with(~ paste(.x, "_prediction", sep = "")) %>% 
-  cbind(house_sales_98105) %>%
-  add_residuals(model = house_mod_98105)
-  
-# Isolate SqFtTotLiving and calculate partial resid
-house_sales_98105_partial_resid %>% 
-  dplyr::select(SqFtTotLiving, resid) %>% 
-  mutate(partial_resid = SqFtTotLiving + resid) %>% 
-  ggplot(aes(SqFtTotLiving, partial_resid)) +
-  geom_point()
+# Calculate partial residuals
+terms <- predict(house_mod_98105, type = "terms") %>% 
+  data.frame()
+partial_resid <- resid(house_mod_98105) + terms %>% 
+  data.frame()
+
+# Plot 
+partial_resid_df <- data.frame(SqFtTotLiving = house_sales_98105$SqFtTotLiving, 
+                               Term = terms$SqFtTotLiving, 
+                               Partial_resid = partial_resid$SqFtTotLiving)
+partial_resid_df %>% 
+  ggplot(aes(SqFtTotLiving, Partial_resid)) + 
+  geom_point() +
+  geom_smooth(se = TRUE) +
+  geom_line(aes(SqFtTotLiving, Term), 
+            linetype = "dashed") +
+  my_theme + 
+  labs(x = "Square feet of total living space", 
+       y = "Partial residual", 
+       title = "Non-linear behavior between adjusted sale price and square footage")
 ```
 
- 
+* Put in another way, the partial residuals represent the residual after subtracting the effects from all of the other variables.  For example, looking at the partial residual plot above, we can see that the effect of the square footage of total living space on the response (adjusted sale price) is not consistently linear after removing the effects of all of the other variables.  
+
 ## Polynomial and Spline Regression
- 
- 
+
+* In some cases, the response is not a linear function of the explanatory variables, and the ordinary least squares regression method isn't appropriate to capture all of the variation in the data.  
+
+* In some cases, transformation of the predictors is feasible (e.g., log-transformation to indicate a multiplicative change in the response variable).  
+
+* We can fit a polynomial regression using the `poly()` function in the standard `lm()` function call.
+
+```{r polynomial-function-housing-data}
+# Fit a polynomial regression to the housing data, squaring the square footage of living space
+house_mod_98105_poly <- lm(AdjSalePrice ~ poly(SqFtTotLiving) + SqFtLot + Bathrooms + 
+                             Bedrooms + BldgGrade, data = house_sales_98105)
+
+```
+
+
