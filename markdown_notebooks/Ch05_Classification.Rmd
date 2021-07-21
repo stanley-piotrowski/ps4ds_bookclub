@@ -15,6 +15,8 @@ library(kableExtra)
 library(modelr)
 library(klaR)
 library(ggtext)
+library(MASS) # linear discriminant analysis
+library(viridis)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -182,6 +184,91 @@ iris %>%
   cov()
 ```
 
+* Fisher's LDA focuses on distinguishing the variation between groups ($SS_{between}$, or the squared distance between the two group means) and the variation within groups ($SS_{within}$, or the spread around the mean within each group), trying to maximize the former and minimize the latter.  
+
+* Specifically, LDA focuses on maximizing the sums of squares between groups to find a linear combination of features that maximizes the ability to distinguish between groups.
+
+* We can use the `MASS::lda()` function with the `loan3000.csv` data to classify loan outcomes using the `borrower_score` and `payment_inc_ratio`.  The output will be the estimated linear discriminator weights, or essentially the coefficient used to estimate the probability that a record belongs to one class or another.
+
+```{r lda-loan-data, message = FALSE}
+# Apply LDA to load data to classify outcome using just the borrower score and the payment income ratio
+loan3000 <- read_csv("../data/loan3000.csv") %>% 
+  rename("record" = X1) %>% 
+  mutate(across(where(is.character), factor)) 
+
+loan_lda <- lda(outcome ~ borrower_score + payment_inc_ratio,
+                data = loan3000)
+
+loan_lda$scaling %>% 
+  data.frame() %>% 
+  rownames_to_column("Feature") %>% 
+  kable_layout(caption = "Linear discriminator weights to predict loan outcome")
+```
+
+* We can then use the `predict()` function to use the linear discriminator weights to estimate the posterior probability that a loan will have the outcome `default` or `paid off`.
+
+```{r lda-predict}
+# Predict outcome of each loan using the LDA results
+loan_lda_posteriors <- predict(loan_lda) %>% 
+  pluck("posterior") %>% 
+  data.frame() %>% 
+  rownames_to_column("record")
+
+# Print output
+head(loan_lda_posteriors) %>% 
+  kable_layout(caption = "Subset of posterior probabilities of loan outcomes using LDA")
+```
+
+* Now, we can plot the predicted values using the LDA results with `ggplot2` to see the separation of observations into different classes.  The linear discriminants, or the scores on each of the linear discriminant axis for each observation, are given in the `x` slot in the `predict()` output.
+
+```{r lda-plot}
+# Plot the values from the LDA
+loan_lda_predictions <- predict(loan_lda) %>% 
+  data.frame()
+
+loan_lda_predictions %>% 
+  ggplot(aes(LD1, fill = class)) +
+  geom_density(alpha = 0.65) +
+  scale_y_continuous(expand = expansion(mult = c(0.001, 0.05))) +
+  my_theme +
+  labs(x = "Linear discriminant 1", 
+       y = "Density", 
+       title = "Distribution of loan outcomes using linear discriminant analysis")
+
+```
+
+* From this density plot, we can see that the first linear discriminant performs reasonably well to distinguish loan outcomes, but there is a region of overlap where the discriminatory ability of the function declines.  
+
+* We can take this one step further and construct a scatterplot with the borrower scores on the x-axis, the payment income ration on the y-axis, applying a color gradient corresponding to the probability of assigning to `default`, and then applying a solid line to visualize the LDA decision boundary.
+
+```{r lda-decision-boundary-plot, warning = FALSE, message = FALSE}
+# Prepare the data for the center of the plot, the slope of the line, and the intercept
+center <- 0.5 * (loan_lda$means[1, ] + loan_lda$means[2, ]) # gets center for both features
+slope <- -loan_lda$scaling[1]/loan_lda$scaling[2]
+intercept <- center[2] - center[1] * slope
+
+# Plot
+loan3000_predictions <- loan_lda_predictions %>% 
+  cbind(loan3000)
+
+loan3000_predictions %>% 
+  ggplot(aes(borrower_score, payment_inc_ratio, color = posterior.default)) +
+  geom_point(alpha = 0.65) +
+  scale_color_viridis("Probability of default", option = "plasma") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0)), 
+                     lim = c(0, 20)) +
+  geom_abline(slope = slope,
+              intercept = intercept, 
+              linetype = "dashed") +
+  my_theme +
+  labs(x = "Borrower score", 
+       y = "Payment to income ratio")
+
+```
+
+* From this plot, we can see the decision boundary is the dashed line, where the probability of default is 0.50.  Warmer hues indicate a higher probability of assignment to default, while cooler hues indicate lower probability of default.  
+
+* There are other approaches to discriminant analysis, and one of the best known is quadratic discriminant analysis (QDA).  The main difference between LDA and QDA is that the former assumes the covariance matrix is the same for both groups, while in the latter application, the covariance matrix can be different.
 
 ## Logistic Regression
 
