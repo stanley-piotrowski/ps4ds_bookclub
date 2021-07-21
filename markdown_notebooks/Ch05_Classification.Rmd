@@ -17,6 +17,7 @@ library(klaR)
 library(ggtext)
 library(MASS) # linear discriminant analysis
 library(viridis)
+library(broom)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -271,6 +272,69 @@ loan3000_predictions %>%
 * There are other approaches to discriminant analysis, and one of the best known is quadratic discriminant analysis (QDA).  The main difference between LDA and QDA is that the former assumes the covariance matrix is the same for both groups, while in the latter application, the covariance matrix can be different.
 
 ## Logistic Regression
+
+### Logistic Response Function and the Logit
+
+* Logistic regression is similar to simple and multiple linear regression, but instead of a continuous response, we're looking at a binary response.
+
+* Ultimately, we're modeling the probability that an observation takes on "class" of binary response (e.g., "yes" or "no"), but we need the logistic response function or inverse logit function to transform the linear function such that the resulting probability is between 0 and 1. Put another way, it squeezes the output of a linear function to be between 0 and 1.
+
+* The logistic function takes the form: $P(X) = \frac{e^{B_0+B_1X_1+...+B_nX_n}}{1 + e^{B_0 + B_1X_1 + ... + B_nX_n}}$
+
+* This expression can be manipulated to get the odds, which is the probability of "success" divided by the probability of "failure:" $\frac{P(X)}{1-P(X)} = e^{B_0 + B_1X_1 + ... + B_nX_n}$
+
+* The odds can take on any number from 0 to infinity, with higher values corresponding to higher probabilities of success relative to the probability of failure.
+
+* We can take the logarithm of each side of the above expression to get the following: $log(\frac{P(X)}{1-P(X)}) = B_0 + B_1X_1 + ... + B_nX_n$, or the log-odds (also called the logit).  This equates to a linear relationship with $X$.
+
+* When interpreting the linear regression model, each unit change in $X$ equates to a $B_n$ increase in the mean response, $Y$.  However, in logistic regression, each unit change in $X$ equates to a one unit increase in the log odds of $B_n$, which can be rewritten as $e^{B_n}$.
+
+* We can take this one step further to use in classification by establishing a probability threshold, above which an observation will be grouped into a category (e.g., probability of 0.5).
+
+### Logistic Regression and the GLM
+
+* We can use the `glm()` function to fit a logistic regression model, since it is an extension of the GLM, but specifying `family = "binomial"` in the function call.  We'll use the loan data again to classify the outcome using the payment to income ratio, purpose of the loan, home ownership status, length of employment, and the borrower score.
+
+```{r loan-data-logistic-regression}
+# Fit a logistic regression model to the loan data
+loan_logistic_mod <- glm(outcome ~ payment_inc_ratio + purpose_ + home_ + 
+                           emp_len_ + borrower_score, 
+                         data = loan_data, family = "binomial")
+
+# Print the model results
+data.frame(coefficient = loan_logistic_mod$coefficients) %>% 
+  rownames_to_column("term") %>% 
+  kable_layout(caption = "Coefficients from logistic regression modeling loan outcomes")
+```
+
+* Using these coefficients, we can predict the probability that a homeowner with a borrower score of 1.00 (the highest in the data set and is associated with the credit of the borrower) and a debt consolidation loan, a payment income ratio of 5, and has been employed for more than one year will not default on their loan using the expression: $P(default = yes) = \frac{e^{-1.6380924 + -0.0797366*1 + -0.2493727*1 + -0.0483297*1 + 0.3567310*1 + 4.6126378*1.00}}{1 + e^{-1.6380924 + -0.0797366*1 + -0.2493727*1 + -0.0483297*1 + 0.3567310*1 + 4.6126378*1.00}}$, or about 0.95.  
+
+* Generalized linear models (GLMs) all have two main components: a probability distribution (in the case of the logistic regression, that's the binomial distribution to model binary responses), and a link function, to map the responses to to the predictors (the logit in the case of logistic regression).
+
+* We can use the `predict()` method with the logistic regression model object, which will give the results in the log odds taking the form $log(\frac{P(default)}{1 - P(default)}$.  To get the probability, we simply apply the logistic function $P(X) = \frac{1}{1-e^n}$, where $n$ is the log-odds value.
+
+```{r loan-logistic-predictions}
+# Calculate the log-odds from the logistic model
+loan_logistic_predictions <- predict(loan_logistic_mod)
+
+# Calculate the probability of default from the log-odds (predictions)
+loan_logistic_prob <- 1/(1 + exp(-loan_logistic_predictions))
+
+# Put this back together with the original loan data
+# We'll also classify each record as "default" or "paid-off" based on the probability > 0.5
+loan_data_predictions <- data.frame(probability = loan_logistic_prob) %>% 
+  cbind(loan_data) %>% 
+  mutate(assignment = ifelse(probability > 0.5, "paid off", "default"))
+
+# How many assignments were correct?
+loan_data_predictions %>% 
+  mutate(outcome_assignment = ifelse(assignment == outcome, "correct", "incorrect")) %>% 
+  group_by(outcome_assignment) %>% 
+  summarise(count = n()) 
+```
+
+* The logistic regression is popular in part because of its interpretability in terms of the odds.  Once we exponentiate the log-odds result from the model coefficient, we can interpret the odds as a multiplicative difference between two responses.  Because the untransformed model results are on the log-scale, a one unit increase equates to a $exp(1)$ increase in the odds ratio, or 2.72. 
+
 
 ## Evaluating Classification Models
 
