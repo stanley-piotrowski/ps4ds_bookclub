@@ -18,6 +18,8 @@ library(ggtext)
 library(MASS) # linear discriminant analysis
 library(viridis)
 library(broom)
+library(mgcv)
+library(ggtext)
 
 # Set ggplot2 theme
 my_theme <- theme(
@@ -335,6 +337,65 @@ loan_data_predictions %>%
 
 * The logistic regression is popular in part because of its interpretability in terms of the odds.  Once we exponentiate the log-odds result from the model coefficient, we can interpret the odds as a multiplicative difference between two responses.  Because the untransformed model results are on the log-scale, a one unit increase equates to a $exp(1)$ increase in the odds ratio, or 2.72. 
 
+### Fitting the model
+
+* One of the major differences between linear regression and logistic regression is how the latter model is fit.  In linear regression, we use least squares to find the coefficients of the predictors and fit the model, then evaluate the model fit using the root mean squared error (RMSE).  This metric is simply the sum of all of the squared distances between the predicted values and the actual values, all divided by the number of observations.
+
+* Unlike linear regression, in logistic regression, maximum likelihood is used to fit the model.  Maximum likelihood estimation (MLE) is essentially the process of identifying parameter values that are most likely to have produced the observed data.
+
+* In the context of the logistic regression, MLE finds the solution with the log-odds that best fits the observed data.  
+
+* In MLE, the set of parameters $\theta$ are chosen that maximize the probability of the data given the predictor values.  To estimate different logistic regression models or other models fitted using MLE, we can use the deviance metric, with lower deviance estimates corresponding to better model fit.
+
+### Assessing the model
+
+* Since the ultimate goal is to develop a model that can be used to classify new data, we can evaluate a logistic regression model by how accurate it is when making predictions.
+
+```{r loan-logistic-regression-summary}
+# Print summary of the logistic regression model
+summary(loan_logistic_mod)
+```
+
+* All of the signs of the coefficients in the above results summary are opposite of the signs of the coefficients presented in the textbook, which indicates that the reference encoding is `default = 0` and `paid off = 1`.  For example, the `borrower_score` feature, which describes the borrowers credit worthiness, would be expected to increase the probability of paying off a loan, not defaulting.  
+
+* Below, we'll fit a generalized additive model (GAM) with a spline term for the payment to income ratio and borrower score and evaluate the deviance values and AIC between models to see which model is a better fit.
+
+```{r loan-logistic-gam}
+# Fit a GAM with a spline term for payment to income ratio
+loan_logistic_gam <- gam(outcome ~ s(payment_inc_ratio) + purpose_ + 
+                           home_ + emp_len_ + s(borrower_score), 
+                         data = loan_data, family = "binomial")
+```
+
+### Analysis of residuals
+
+* We can calculate the partial residuals, or the residuals associated with each feature for the logistic regression model, just as we have done previously for the linear regression models.
+
+```{r logistic-mod-partial-residuals}
+# Calculate partial residuals
+predictions <- predict(loan_logistic_gam, type = "terms") %>% 
+  data.frame()
+
+partial_resid <- resid(loan_logistic_gam) + predictions %>% 
+  data.frame()
+
+# Build data frame with just the payment to income ratio observed data, the predicted values, and the partial residuals, then plot
+df <- data.frame(payment_inc_ratio = loan_data$payment_inc_ratio, 
+           predictions = predictions$s.payment_inc_ratio., 
+           partial_resid = partial_resid$s.payment_inc_ratio.)
+df %>% 
+  ggplot(aes(payment_inc_ratio, partial_resid)) +
+  geom_point(alpha = 0.65) + 
+  geom_line(aes(payment_inc_ratio, predictions), 
+            linetype = "dashed", 
+            color = "red") +
+  my_theme + 
+  labs(x = "Payment to income ratio", 
+       y = "Partial residuals", 
+       title = "Partial residuals plot from generalized additive model with spline term")
+```
+
+* Here, the points above the red line correspond to paid off loans, while the cloud of points below the red line correspond to defaulted loans.
 
 ## Evaluating Classification Models
 
