@@ -424,9 +424,11 @@ df <- data.frame(predictions_y = predictions_y,
   )
 
 # Summarize and generate confusion matrix
-df %>% 
+confusion_mat <- df %>% 
   group_by(class) %>% 
   summarise(count = n())
+
+confusion_mat
 ```
 
 * This case is slightly different than the textbook, but the numbers are still the same, just the interpretation is opposite.  Here, our model correctly classified 14,620 loans as paid off and 14,293 as defaulted.  However, it correctly classified 8,378 loans as paid off when they were default, and incorrectly classified 8,051 loans as default when they were actually paid off.  We can confirm this by merging `df` with the original `loan_data` and checking these numbers.
@@ -441,7 +443,48 @@ cbind(df, loan_data) %>%
 
 * In cases where there the outcomes are unbalanced, such as when a particular class is rare, we may not need to worry about identifying each of those rare cases.  Although it won't be as accurate (i.e., it may not be 100% accurate), it will generally correctly classify observations on new data.
 
+### Precision, recall, and specificity
 
+* __Precision:__ the sum of the true positives divided by the sum of all of the true positives and false negatives (i.e., those that were flagged as negative but were actually positive).  Written as an expression: $precision = \frac{true-positives}{true-positives + false-positives}$
 
+* __Sensitivity:__ this metric evaluates the strength of the model to predict a positive outcome, or the proportion of the total positives that the model identifies.  For example, we would say that a model is very sensitive if it correctly identifies 10 out of 10 positive outcomes.  Written as an expression: $sensitivity = \frac{true-positives}{true-positives + false-negative}$
+
+* __Specificity:__ this metric refers to the model's ability to identify a negative outcome.  Written as an expression: $specificity = \frac{true-negatives}{true-negatives + false-positives}$ 
+
+* We can calculate each of these metrics from the confusion matrix generated above.
+
+```{r calculate-metrics}
+# Calculate other metrics from confusion matrix
+diagnostic_metrics <- confusion_mat %>% 
+  pivot_wider(names_from = "class", 
+              values_from = "count") %>% 
+  mutate(precision = true_positive / (true_positive + false_positive), 
+         sensitivity = true_positive / (true_positive + false_negative), 
+         specificity = true_negative / (true_negative + false_positive), 
+         across(where(is.numeric), function(x) round(x, digits = 2)))
+
+diagnostic_metrics %>% 
+  kable_layout(caption = "Confusion matrix and diagnostic metrics from logistic regression model")
+```
+
+### ROC curve
+
+* There is a trade-off between model sensitivity and specificity: the former measures how well the model classifies positive outcomes, while the latter captures how well the model classifies negative outcomes, ideally not classifying observations incorrectly.
+
+* The receiver operating characteristics curve, or ROC curve, captures both of these metrics and plots the specificity on the x-axis and the sensitivity on the y-axis.  
+
+```{r ROC-curve}
+# Sort records by the predicted probability of being a 1, or paid off
+index <- data.frame(log_odds = predictions) %>% 
+  rownames_to_column("record") %>% 
+  mutate(record = as.numeric(record)) %>% 
+  arrange(desc(log_odds))
+
+# Compute the cumulative specificity and sensitivity based on the sorted records
+index %>% 
+  left_join(loan_data, by = "record") %>% 
+  mutate(sensitivity = cumsum(outcome == "paid off") / sum(outcome == "paid off"), 
+            specificity = (sum(outcome == "default") - cumsum(outcome == "default")) / sum(outcome == "default"))
+```
 
 ## Strategies for Imbalanced Data
