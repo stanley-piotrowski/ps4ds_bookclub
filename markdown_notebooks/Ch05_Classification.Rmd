@@ -399,4 +399,49 @@ df %>%
 
 ## Evaluating Classification Models
 
+* Often, training sets are constructed from the data, to train and fit a statistical model, which can then be applied to a new, unseen test set.  The accuracy of the model can then be evaluated based on how well it predicts the true outcomes in the test set.
+
+* Accuracy is a common metric used, defined as the sum of the true positives and true negatives, divided by the sample size.
+
+### Confusion Matrix
+
+* A confusion matrix is a table showing the number of correct and incorrect predictions made by the classification model by the type of response. 
+
+```{r logistic-gam-confusion-matrix}
+# Calculate the predictions
+predictions <- predict(loan_logistic_gam, newdata = loan_data)
+predictions_y <- as.numeric(predictions > 0)
+true_y <- as.numeric(loan_data$outcome == "paid off") # convert factor to numeric
+
+# Put these into a data frame and assign classes
+df <- data.frame(predictions_y = predictions_y, 
+           true_y = true_y) %>% 
+  mutate(class = case_when(
+    true_y == 1 & predictions_y == 1 ~ "true_positive", 
+    true_y == 0 & predictions_y == 0 ~ "true_negative", 
+    true_y == 0 & predictions_y == 1 ~ "false_positive", 
+    TRUE ~ "false_negative")
+  )
+
+# Summarize and generate confusion matrix
+df %>% 
+  group_by(class) %>% 
+  summarise(count = n())
+```
+
+* This case is slightly different than the textbook, but the numbers are still the same, just the interpretation is opposite.  Here, our model correctly classified 14,620 loans as paid off and 14,293 as defaulted.  However, it correctly classified 8,378 loans as paid off when they were default, and incorrectly classified 8,051 loans as default when they were actually paid off.  We can confirm this by merging `df` with the original `loan_data` and checking these numbers.
+
+```{r check-confusion-matrix}
+# Filter combined data to check that the interpretation is correct
+cbind(df, loan_data) %>% 
+  filter(class == "false_positive") %>% 
+  group_by(outcome) %>% 
+  summarise(count = n())
+```
+
+* In cases where there the outcomes are unbalanced, such as when a particular class is rare, we may not need to worry about identifying each of those rare cases.  Although it won't be as accurate (i.e., it may not be 100% accurate), it will generally correctly classify observations on new data.
+
+
+
+
 ## Strategies for Imbalanced Data
