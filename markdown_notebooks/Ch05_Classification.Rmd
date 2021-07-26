@@ -39,6 +39,33 @@ kable_layout <- function(df, caption) {
 }
 ```
 
+## Learning Objectives and Notes
+
+### Meeting 7/26
+
+Learning Objectives:
+
+* Describe a general approach to binary classification (tree models can be used for predicting multiple classes).
+
+* Use naive Bayes to a binary categorical response from categorical predictors.
+
+* Use linear discriminant analysis (LDA) to predict a binary categorical variable from normally distributed continuous or categorical predictors.
+
+* Use logistic regression to predict a binary categorical response from predictors.  
+
+Notes: 
+
+* Bayes theorem calculates the probability of A given B, if you know the probability of B given A, and the probability of A, and the probability of B.
+
+* Bayes theorem: $prob(true | class) = \frac{prob(class|true)prob(true)}{prob(class)}$
+
+* For naive Bayes, it's important to note that it's generally used with categorical predictors.  If dealing with numeric predictors, you could bin observations, but that could introduce bias.  In other cases, predictors may already be binned (e.g., ages).
+
+* Naive Bayes is "naive" because the predictors are assumed to be independent, which is not the case most of the time in real-world scenarios.
+
+* LDA essentially takes covariance matrices and finds coefficients for predictors which maximizes the ratio of the sums of squares between groups and the sums of squares within groups.  
+
+* Logistic regression uses a transformation to shrink continuous responses in linear regression to be between 0 and 1.  Additionally, instead of describing the mean response with a one unit change in the predictor, we describe the log-odds with a one unit change in the predictor.  We can use the logistic function to re-write the log-odds as a probability of assigning to a particular class.
 
 ## Introduction
 
