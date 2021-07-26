@@ -508,10 +508,65 @@ index <- data.frame(log_odds = predictions) %>%
   arrange(desc(log_odds))
 
 # Compute the cumulative specificity and sensitivity based on the sorted records
-index %>% 
+roc_df <- index %>% 
   left_join(loan_data, by = "record") %>% 
   mutate(sensitivity = cumsum(outcome == "paid off") / sum(outcome == "paid off"), 
-            specificity = (sum(outcome == "default") - cumsum(outcome == "default")) / sum(outcome == "default"))
+            specificity = (sum(outcome == "default") - cumsum(outcome == "default")) / sum(outcome == "default")) %>% 
+  dplyr::select(record, log_odds, sensitivity, specificity)
+
+# Plot ROC curve
+roc_df %>% 
+  ggplot(aes(specificity, sensitivity)) + 
+  geom_line(color = "blue") +
+  geom_line(data = data.frame(x = (0:100) / 100), 
+            aes(x = x, y = 1  - x), 
+            linetype = "dashed", 
+            color = "red") +
+  my_theme +
+  scale_x_continuous(expand = c(0, 0.01)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Specificity", 
+       y = "Sensitivity", 
+       title = "ROC curve for logistic GAM predicting loan outcomes", 
+       subtitle = "Red dashed line represents a classifier no better than random chance")
 ```
+
+* In the ROC curve above, the red dashed line represents a classifier that does no better than random chance at predicting the outcomes.  The blue line tracks the relationship between specificity and sensitivity.  The former measures the number of true negatives divided by the sum of true negatives and false positives, effectively acting as a measure of the classifier's ability to correctly identify 0's. A classifier which perfectly predicts all negatives (0's) without detecting any false positives would have a specificity value of 1.00.
+
+* In contrast, sensitivity measures the number of true positives divided by the sum of the true positives plus the false negatives, effectively acting as a measure of the classifier's ability to correctly identify positives (1's) without detecting false negatives (i.e., outcomes that are actually 1's but classified as 0's).  In other words, a model which perfectly predicts all 1's without any mistakes will have a sensitivity value of 1.00.
+
+### AUC
+
+* The area underneath the curve (AUC) is a metric of the total area underneath the ROC curve, and is useful as a single summary statistic for comparing classifiers.  Ideally, we strive for AUC of 1.00, which correctly classifies all 1's and 0's, without errors; a completely ineffective classifier, or one that does no better than random chance, will have an AUC value of 0.5.
+
+* We can calculate the AUC for the loan data using the code snippit below.
+
+```{r calculate-loan-model-auc}
+# Calculate AUC for the logistic GAM model fitted to loan data
+roc_df %>% 
+  arrange(sensitivity) %>% 
+  summarise(AUC = sum(sensitivity * diff(1 - specificity)))
+```
+
+### Lift and Uplift
+
+* One of the issues with classification models is the rare case problem.  In this situation, you would typically want to lower the probability threshold to call 1's that were important (in the case of insurance fraud, for example).  However, you are making a compromise because some 0's will inevitably be called as 1's (false positives).  
+
+* Lift is the gain (lift is also called gain) in predictive ability of the model compared to random chance in different percentiles of the predictor values.  We first need to order observations by probability of being 1's, and then look at different percentiles to see how much better the model does at random chance.  
+
+```{r lift-loan-data}
+# Compute the lift for different deciles
+roc_df %>% 
+  mutate(prob_success = plogis(log_odds)) %>% 
+  arrange(desc(prob_success)) %>% 
+  head() %>% 
+  kable_layout(caption = "Loan data records ordered by the probability of success")
+```
+
+* Ultimately, a lift chart may help the user decide an appropriate probability threshold cutoff.  
+
+### Uplift 
+
+* Uplift refers to the improvement in response predicted for an individual case with two different treatments (e.g., in the case of A/B experiments).  This can be done by looking at the differences in scoring individual observations based on the different treatments.  
 
 ## Strategies for Imbalanced Data
